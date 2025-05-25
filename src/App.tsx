@@ -21,12 +21,56 @@ const ChordList = styled.div`
 
 const ChordGrid = styled.div`
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const GridContainer = styled.div`
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   border: 1px solid #ccc;
   border-radius: 8px;
   padding: 10px;
+`;
+
+const BpmControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+`;
+
+const BpmInput = styled.input`
+  width: 80px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+`;
+
+const TimeSignatureControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+`;
+
+const TimeSignatureSelect = styled.select`
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+`;
+
+const ControlsContainer = styled.div`
+  display: flex;
+  gap: 10px;
 `;
 
 const ChordButton = styled.button`
@@ -66,6 +110,8 @@ function App() {
   const [selectedChord, setSelectedChord] = useState<Chord | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [synth, setSynth] = useState<Tone.PolySynth | null>(null);
+  const [bpm, setBpm] = useState(120);
+  const [timeSignature, setTimeSignature] = useState('4/4');
 
   useEffect(() => {
     const newSynth = new Tone.PolySynth(Tone.Synth).toDestination();
@@ -100,8 +146,13 @@ function App() {
     // 新しい和音を再生
     synth.triggerAttack(notes);
     
-    // 和音を1秒間保持
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // BPMに応じた遅延時間を計算
+    const quarterNoteDuration = (60 / bpm) * 1000;
+    const [beatsPerMeasure] = timeSignature.split('/').map(Number);
+    const measureDuration = quarterNoteDuration * beatsPerMeasure;
+    
+    // 和音を保持（1小節分）
+    await new Promise(resolve => setTimeout(resolve, measureDuration));
     
     // 和音を停止
     synth.triggerRelease(notes);
@@ -147,15 +198,42 @@ function App() {
       </ChordList>
 
       <ChordGrid>
-        {grid.map((cell) => (
-          <GridCell
-            key={cell.position}
-            isSelected={cell.chord !== null}
-            onClick={() => handleGridCellClick(cell.position)}
-          >
-            {cell.chord ? `${cell.chord.root} ${cell.chord.type}` : ''}
-          </GridCell>
-        ))}
+        <ControlsContainer>
+          <BpmControl>
+            <label>BPM:</label>
+            <BpmInput
+              type="number"
+              min="40"
+              max="240"
+              value={bpm}
+              onChange={(e) => setBpm(Math.max(40, Math.min(240, parseInt(e.target.value) || 120)))}
+            />
+          </BpmControl>
+          <TimeSignatureControl>
+            <label>拍子:</label>
+            <TimeSignatureSelect
+              value={timeSignature}
+              onChange={(e) => setTimeSignature(e.target.value)}
+            >
+              <option value="2/4">2/4</option>
+              <option value="3/4">3/4</option>
+              <option value="4/4">4/4</option>
+              <option value="5/4">5/4</option>
+              <option value="6/8">6/8</option>
+            </TimeSignatureSelect>
+          </TimeSignatureControl>
+        </ControlsContainer>
+        <GridContainer>
+          {grid.map((cell) => (
+            <GridCell
+              key={cell.position}
+              isSelected={cell.chord !== null}
+              onClick={() => handleGridCellClick(cell.position)}
+            >
+              {cell.chord ? `${cell.chord.root} ${cell.chord.type}` : ''}
+            </GridCell>
+          ))}
+        </GridContainer>
       </ChordGrid>
 
       <ControlPanel>
