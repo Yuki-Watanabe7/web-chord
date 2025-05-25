@@ -175,20 +175,38 @@ function App() {
 
     setGrid(prev => prev.map(measure => {
       if (measure.position === measurePosition) {
-        // 次のコードが指定されるまでの拍数を計算
+        // 既存のコードの長さを調整
+        const updatedBeats = measure.beats.map((beat, i) => {
+          // 新しいコードを指定する拍より前の拍で、コードが指定されている場合
+          if (i < beatPosition && beat.chord !== null) {
+            // 次のコードが指定されるまでの拍数を計算
+            let duration = 1;
+            for (let j = i + 1; j < beatPosition; j++) {
+              if (measure.beats[j].chord === null) {
+                duration++;
+              } else {
+                break;
+              }
+            }
+            return { ...beat, duration };
+          }
+          return beat;
+        });
+
+        // 新しいコードの長さを計算
         let duration = 1;
-        // 同じ小節内で次のコードを探す
         for (let i = beatPosition + 1; i < measure.beats.length; i++) {
-          if (measure.beats[i].chord === null) {
+          if (updatedBeats[i].chord === null) {
             duration++;
           } else {
             break;
           }
         }
 
+        // 新しいコードを追加
         return {
           ...measure,
-          beats: measure.beats.map((beat, i) => {
+          beats: updatedBeats.map((beat, i) => {
             if (i === beatPosition) {
               return { ...beat, chord: selectedChord, duration };
             } else if (i > beatPosition && i < beatPosition + duration) {
