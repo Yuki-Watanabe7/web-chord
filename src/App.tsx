@@ -266,13 +266,24 @@ function App() {
     // 再生開始前に全ての音を停止
     synth.releaseAll();
 
-    for (const measure of grid) {
-      for (let i = 0; i < measure.beats.length; i++) {
-        const beat = measure.beats[i];
+    // コードが指定されている最後の小節を探す
+    let lastMeasureWithChord = -1;
+    for (let i = grid.length - 1; i >= 0; i--) {
+      if (grid[i].beats.some(beat => beat.chord !== null)) {
+        lastMeasureWithChord = i;
+        break;
+      }
+    }
+
+    // 最後の小節まで再生
+    for (let i = 0; i <= lastMeasureWithChord; i++) {
+      const measure = grid[i];
+      for (let j = 0; j < measure.beats.length; j++) {
+        const beat = measure.beats[j];
         if (beat.chord) {
           await playChord(beat.chord, beat.duration);
           // 次の拍にスキップ（duration分）
-          i += beat.duration - 1;
+          j += beat.duration - 1;
         } else {
           // コードが指定されていない場合は1拍分待機
           await new Promise(resolve => setTimeout(resolve, (60 / bpm) * 1000));
