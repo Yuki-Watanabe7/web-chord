@@ -8,6 +8,11 @@ const ChordList = styled.div`
   border: 1px solid #ccc;
   border-radius: 8px;
   padding: 10px;
+
+  @media (max-width: 900px) {
+    width: 100%;
+    max-height: 220px;
+  }
 `;
 
 const ChordButton = styled('button', {

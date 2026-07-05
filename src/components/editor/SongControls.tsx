@@ -4,6 +4,7 @@ import type { TimeSignature } from '../../domain/music/types';
 
 const ControlsContainer = styled.div`
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 `;
@@ -40,6 +41,22 @@ const TimeSignatureSelect = styled.select`
   background: white;
 `;
 
+const WrapControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+`;
+
+const WrapSelect = styled.select`
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+`;
+
 const TitleControl = styled.div`
   display: flex;
   align-items: center;
@@ -54,27 +71,32 @@ const TitleInput = styled.input`
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 1.2rem;
-  width: 200px;
+  width: min(220px, 52vw);
 `;
 
 const TIME_SIGNATURE_OPTIONS = ['2/4', '3/4', '4/4', '5/4', '6/8'] as const;
+const MEASURES_PER_ROW_OPTIONS = [1, 2, 4, 8, 16] as const;
 
 interface SongControlsProps {
   title: string;
   bpm: number;
   timeSignature: TimeSignature;
+  measuresPerRow: number;
   onTitleChange: (title: string) => void;
   onBpmChange: (bpm: number) => void;
   onTimeSignatureChange: (timeSignature: string) => void;
+  onMeasuresPerRowChange: (measuresPerRow: number) => void;
 }
 
 export function SongControls({
   title,
   bpm,
   timeSignature,
+  measuresPerRow,
   onTitleChange,
   onBpmChange,
   onTimeSignatureChange,
+  onMeasuresPerRowChange,
 }: SongControlsProps) {
   return (
     <ControlsContainer>
@@ -115,6 +137,20 @@ export function SongControls({
           ))}
         </TimeSignatureSelect>
       </TimeSignatureControl>
+
+      <WrapControl>
+        <label>折り返し:</label>
+        <WrapSelect
+          value={measuresPerRow}
+          onChange={(event) => onMeasuresPerRowChange(parseInt(event.target.value, 10))}
+        >
+          {MEASURES_PER_ROW_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}小節
+            </option>
+          ))}
+        </WrapSelect>
+      </WrapControl>
     </ControlsContainer>
   );
 }

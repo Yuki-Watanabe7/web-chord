@@ -8,9 +8,10 @@ import { TransportControls } from '../components/editor/TransportControls';
 import {
   changeSongTimeSignature,
   createEmptySong,
+  deleteChordFromSong,
+  insertChordInSong,
   parseTimeSignature,
-  placeChordInSong,
-  songToGrid,
+  resizeChordInSong,
 } from '../domain/music/timeline';
 import { createChordPlaybackSynth, playChordProgression } from '../services/playback';
 import type { ChordPlaybackSynth } from '../services/playback';
@@ -20,16 +21,24 @@ import type { Song } from '../types/song';
 
 const AppContainer = styled.div`
   display: flex;
-  height: 100vh;
+  width: 100%;
+  min-height: 100vh;
   padding: 20px;
   gap: 20px;
+
+  @media (max-width: 900px) {
+    flex-direction: column;
+    padding: 12px;
+  }
 `;
 
 const ChordGrid = styled.div`
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding-bottom: 60px;
 `;
 
 function Editor() {
@@ -39,7 +48,7 @@ function Editor() {
   const [selectedChord, setSelectedChord] = useState<Chord | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [synth, setSynth] = useState<ChordPlaybackSynth | null>(null);
-  const grid = songToGrid(song);
+  const [measuresPerRow, setMeasuresPerRow] = useState(4);
 
   useEffect(() => {
     const newSynth = createChordPlaybackSynth();
@@ -66,12 +75,20 @@ function Editor() {
     setSong((prev) => changeSongTimeSignature(prev, nextTimeSignature));
   };
 
-  const handleBeatCellClick = (measurePosition: number, beatPosition: number) => {
+  const handleBeatClick = (startBeat: number) => {
     if (!selectedChord) {
       return;
     }
 
-    setSong((prev) => placeChordInSong(prev, measurePosition, beatPosition, selectedChord));
+    setSong((prev) => insertChordInSong(prev, startBeat, selectedChord));
+  };
+
+  const handleChordDelete = (chordId: string) => {
+    setSong((prev) => deleteChordFromSong(prev, chordId));
+  };
+
+  const handleChordResize = (chordId: string, durationBeats: number) => {
+    setSong((prev) => resizeChordInSong(prev, chordId, durationBeats));
   };
 
   const playProgression = async () => {
@@ -109,11 +126,19 @@ function Editor() {
           title={song.title}
           bpm={song.bpm}
           timeSignature={song.timeSignature}
+          measuresPerRow={measuresPerRow}
           onTitleChange={(title) => setSong((prev) => ({ ...prev, title }))}
           onBpmChange={(bpm) => setSong((prev) => ({ ...prev, bpm }))}
           onTimeSignatureChange={handleTimeSignatureChange}
+          onMeasuresPerRowChange={setMeasuresPerRow}
         />
-        <TimelineGrid grid={grid} onBeatClick={handleBeatCellClick} />
+        <TimelineGrid
+          song={song}
+          measuresPerRow={measuresPerRow}
+          onBeatClick={handleBeatClick}
+          onChordDelete={handleChordDelete}
+          onChordResize={handleChordResize}
+        />
       </ChordGrid>
 
       <TransportControls

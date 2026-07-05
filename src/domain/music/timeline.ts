@@ -53,6 +53,27 @@ export const parseTimeSignature = (value: unknown): TimeSignature => {
 export const formatTimeSignature = (timeSignature: TimeSignature) =>
   `${timeSignature.beatsPerMeasure}/${timeSignature.beatUnit}`;
 
+export const getTotalBeats = (song: Pick<Song, 'timeSignature' | 'totalMeasures'>) =>
+  Math.max(0, song.totalMeasures * song.timeSignature.beatsPerMeasure);
+
+export const getChordEndBeat = (chord: Pick<ChordEvent, 'startBeat' | 'durationBeats'>) =>
+  chord.startBeat + chord.durationBeats;
+
+export const sortChordEvents = (chords: ChordEvent[]) =>
+  [...chords].sort((a, b) => {
+    if (a.startBeat === b.startBeat) {
+      return a.id.localeCompare(b.id);
+    }
+
+    return a.startBeat - b.startBeat;
+  });
+
+export const chordEventToChordDefinition = (chord: ChordEvent): ChordDefinition => ({
+  root: chord.root,
+  type: chord.quality,
+  notes: getChordNotes(chord.root, chord.quality),
+});
+
 export const createEmptyGrid = (
   totalMeasures = DEFAULT_TOTAL_MEASURES,
   beatsPerMeasure = DEFAULT_TIME_SIGNATURE.beatsPerMeasure,
@@ -204,12 +225,9 @@ export const songToGrid = (song: Song): ChordGridMeasure[] => {
 };
 
 export const changeSongTimeSignature = (song: Song, timeSignature: TimeSignature): Song => {
-  const nextGrid = resizeChordGridToTimeSignature(songToGrid(song), timeSignature);
-
   return {
     ...song,
     timeSignature,
-    chords: gridToChordEvents(nextGrid, timeSignature),
   };
 };
 
@@ -224,5 +242,99 @@ export const placeChordInSong = (
   return {
     ...song,
     chords: gridToChordEvents(nextGrid, song.timeSignature),
+  };
+};
+
+const clampBeatPosition = (startBeat: number, totalBeats: number) =>
+  Math.max(0, Math.min(Math.floor(startBeat), Math.max(0, totalBeats - 1)));
+
+export const getChordMaxDurationBeats = (song: Song, chordId: string) => {
+  const targetChord = song.chords.find((chord) => chord.id === chordId);
+
+  if (!targetChord) {
+    return 1;
+  }
+
+  const totalBeats = getTotalBeats(song);
+  const nextChord = sortChordEvents(song.chords).find(
+    (chord) => chord.id !== chordId && chord.startBeat > targetChord.startBeat,
+  );
+  const nextBoundary = nextChord ? nextChord.startBeat : totalBeats;
+
+  return Math.max(1, Math.floor(nextBoundary - targetChord.startBeat));
+};
+
+export const insertChordInSong = (
+  song: Song,
+  startBeat: number,
+  chord: ChordDefinition,
+): Song => {
+  const totalBeats = getTotalBeats(song);
+
+  if (totalBeats === 0) {
+    return song;
+  }
+
+  const nextStartBeat = clampBeatPosition(startBeat, totalBeats);
+  const nextChord = sortChordEvents(song.chords).find(
+    (existingChord) => existingChord.startBeat > nextStartBeat,
+  );
+  const nextBoundary = nextChord ? nextChord.startBeat : totalBeats;
+  const insertedChord: ChordEvent = {
+    id: createId('chord'),
+    root: chord.root,
+    quality: chord.type,
+    startBeat: nextStartBeat,
+    durationBeats: Math.max(1, Math.floor(nextBoundary - nextStartBeat)),
+  };
+
+  const preservedChords = song.chords.flatMap((existingChord): ChordEvent[] => {
+    if (existingChord.startBeat === nextStartBeat) {
+      return [];
+    }
+
+    if (
+      existingChord.startBeat < nextStartBeat &&
+      getChordEndBeat(existingChord) > nextStartBeat
+    ) {
+      return [{
+        ...existingChord,
+        durationBeats: Math.max(1, nextStartBeat - existingChord.startBeat),
+      }];
+    }
+
+    return [existingChord];
+  });
+
+  return {
+    ...song,
+    chords: sortChordEvents([...preservedChords, insertedChord]),
+  };
+};
+
+export const deleteChordFromSong = (song: Song, chordId: string): Song => ({
+  ...song,
+  chords: song.chords.filter((chord) => chord.id !== chordId),
+});
+
+export const resizeChordInSong = (
+  song: Song,
+  chordId: string,
+  durationBeats: number,
+): Song => {
+  const targetChord = song.chords.find((chord) => chord.id === chordId);
+
+  if (!targetChord) {
+    return song;
+  }
+
+  const maxDuration = getChordMaxDurationBeats(song, chordId);
+  const nextDuration = Math.max(1, Math.min(Math.round(durationBeats), maxDuration));
+
+  return {
+    ...song,
+    chords: sortChordEvents(song.chords.map((chord) => (
+      chord.id === chordId ? { ...chord, durationBeats: nextDuration } : chord
+    ))),
   };
 };

@@ -1,5 +1,9 @@
 import * as Tone from 'tone';
-import { songToGrid } from '../domain/music/timeline';
+import {
+  chordEventToChordDefinition,
+  getTotalBeats,
+  sortChordEvents,
+} from '../domain/music/timeline';
 import type { ChordDefinition, Song } from '../domain/music/types';
 
 export type ChordPlaybackSynth = Tone.PolySynth;
@@ -34,29 +38,30 @@ export const playChord = async (
 export const playChordProgression = async (song: Song, synth: ChordPlaybackSynth) => {
   synth.releaseAll();
 
-  const playbackGrid = songToGrid(song);
-  let lastMeasureWithChord = -1;
+  const totalBeats = getTotalBeats(song);
+  const chordEvents = sortChordEvents(song.chords).filter(
+    (chord) => chord.startBeat < totalBeats && chord.durationBeats > 0,
+  );
 
-  for (let i = playbackGrid.length - 1; i >= 0; i--) {
-    if (playbackGrid[i]?.beats.some((beat) => beat.chord !== null)) {
-      lastMeasureWithChord = i;
-      break;
-    }
+  if (chordEvents.length === 0) {
+    return;
   }
 
-  for (let i = 0; i <= lastMeasureWithChord; i++) {
-    const measure = playbackGrid[i];
-    if (!measure) continue;
+  let currentBeat = 0;
 
-    for (let j = 0; j < measure.beats.length; j++) {
-      const beat = measure.beats[j];
-
-      if (beat?.chord) {
-        await playChord(synth, beat.chord, beat.duration, song.bpm);
-        j += beat.duration - 1;
-      } else {
-        await wait(getBeatDurationMs(song.bpm));
-      }
+  for (const chordEvent of chordEvents) {
+    if (chordEvent.startBeat > currentBeat) {
+      await wait(getBeatDurationMs(song.bpm) * (chordEvent.startBeat - currentBeat));
+      currentBeat = chordEvent.startBeat;
     }
+
+    if (chordEvent.startBeat < currentBeat) {
+      continue;
+    }
+
+    const durationBeats = Math.min(chordEvent.durationBeats, totalBeats - chordEvent.startBeat);
+
+    await playChord(synth, chordEventToChordDefinition(chordEvent), durationBeats, song.bpm);
+    currentBeat = chordEvent.startBeat + durationBeats;
   }
 };
