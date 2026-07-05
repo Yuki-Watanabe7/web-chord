@@ -7,15 +7,24 @@ import { TimelineGrid } from '../components/editor/TimelineGrid';
 import { TransportControls } from '../components/editor/TransportControls';
 import {
   changeSongTimeSignature,
+  createMusicId,
   createEmptySong,
   deleteChordFromSong,
+  deleteMelodyNoteFromSong,
   insertChordInSong,
+  insertMelodyNoteInSong,
   parseTimeSignature,
   resizeChordInSong,
+  resizeMelodyNoteInSong,
 } from '../domain/music/timeline';
-import { createChordPlaybackSynth, playChordProgression } from '../services/playback';
+import {
+  createChordPlaybackSynth,
+  playChordProgression,
+  previewMelodyNote,
+} from '../services/playback';
 import type { ChordPlaybackSynth } from '../services/playback';
 import { loadSong, saveSong } from '../services/songStorage';
+import type { NoteName } from '../domain/music/types';
 import type { Chord } from '../types/chord';
 import type { Song } from '../types/song';
 
@@ -49,6 +58,7 @@ function Editor() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [synth, setSynth] = useState<ChordPlaybackSynth | null>(null);
   const [measuresPerRow, setMeasuresPerRow] = useState(4);
+  const [selectedMelodyNoteId, setSelectedMelodyNoteId] = useState<string | null>(null);
 
   useEffect(() => {
     const newSynth = createChordPlaybackSynth();
@@ -91,6 +101,40 @@ function Editor() {
     setSong((prev) => resizeChordInSong(prev, chordId, durationBeats));
   };
 
+  const previewNote = (pitch: NoteName, octave: number, velocity = 0.8) => {
+    if (!synth) {
+      return;
+    }
+
+    void previewMelodyNote(synth, { pitch, octave, velocity });
+  };
+
+  const handleMelodyCellClick = (startBeat: number, pitch: NoteName, octave: number) => {
+    const noteId = createMusicId('melody');
+
+    setSong((prev) => insertMelodyNoteInSong(prev, startBeat, pitch, octave, noteId));
+    setSelectedMelodyNoteId(noteId);
+    previewNote(pitch, octave);
+  };
+
+  const handleMelodyNoteSelect = (noteId: string) => {
+    setSelectedMelodyNoteId(noteId);
+
+    const note = song.melodyNotes.find((melodyNote) => melodyNote.id === noteId);
+    if (note) {
+      previewNote(note.pitch, note.octave, note.velocity);
+    }
+  };
+
+  const handleMelodyNoteDelete = (noteId: string) => {
+    setSong((prev) => deleteMelodyNoteFromSong(prev, noteId));
+    setSelectedMelodyNoteId((prev) => (prev === noteId ? null : prev));
+  };
+
+  const handleMelodyNoteResize = (noteId: string, durationBeats: number) => {
+    setSong((prev) => resizeMelodyNoteInSong(prev, noteId, durationBeats));
+  };
+
   const playProgression = async () => {
     if (!synth) {
       return;
@@ -109,7 +153,9 @@ function Editor() {
     setSong((prev) => ({
       ...prev,
       chords: [],
+      melodyNotes: [],
     }));
+    setSelectedMelodyNoteId(null);
   };
 
   const handleSave = () => {
@@ -135,9 +181,14 @@ function Editor() {
         <TimelineGrid
           song={song}
           measuresPerRow={measuresPerRow}
+          selectedMelodyNoteId={selectedMelodyNoteId}
           onBeatClick={handleBeatClick}
           onChordDelete={handleChordDelete}
           onChordResize={handleChordResize}
+          onMelodyCellClick={handleMelodyCellClick}
+          onMelodyNoteSelect={handleMelodyNoteSelect}
+          onMelodyNoteDelete={handleMelodyNoteDelete}
+          onMelodyNoteResize={handleMelodyNoteResize}
         />
       </ChordGrid>
 

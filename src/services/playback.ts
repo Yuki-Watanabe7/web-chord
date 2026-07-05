@@ -4,7 +4,7 @@ import {
   getTotalBeats,
   sortChordEvents,
 } from '../domain/music/timeline';
-import type { ChordDefinition, Song } from '../domain/music/types';
+import type { ChordDefinition, MelodyNote, Song } from '../domain/music/types';
 
 export type ChordPlaybackSynth = Tone.PolySynth;
 
@@ -24,6 +24,8 @@ export const playChord = async (
   durationBeats: number,
   bpm: number,
 ) => {
+  await Tone.start();
+
   const notes = chord.notes.map((note) => `${note}4`);
 
   synth.releaseAll();
@@ -35,7 +37,16 @@ export const playChord = async (
   await wait(100);
 };
 
+export const previewMelodyNote = async (
+  synth: ChordPlaybackSynth,
+  note: Pick<MelodyNote, 'pitch' | 'octave' | 'velocity'>,
+) => {
+  await Tone.start();
+  synth.triggerAttackRelease(`${note.pitch}${note.octave}`, '8n', undefined, note.velocity);
+};
+
 export const playChordProgression = async (song: Song, synth: ChordPlaybackSynth) => {
+  await Tone.start();
   synth.releaseAll();
 
   const totalBeats = getTotalBeats(song);

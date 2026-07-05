@@ -1,13 +1,47 @@
 import styled from '@emotion/styled';
+import type { KeyboardEvent } from 'react';
+import { getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
 import {
   getChordEndBeat,
   getChordMaxDurationBeats,
+  getMelodyNoteEndBeat,
+  getMelodyNoteMaxDurationBeats,
   getTotalBeats,
   sortChordEvents,
+  sortMelodyNotes,
 } from '../../domain/music/timeline';
-import type { ChordEvent, Song } from '../../domain/music/types';
+import type { ChordEvent, MelodyNote, NoteName, Song } from '../../domain/music/types';
 
 const BEAT_WIDTH = 56;
+const PITCH_LABEL_WIDTH = 44;
+const MELODY_ROW_HEIGHT = 24;
+const MELODY_LOW_OCTAVE = 3;
+const MELODY_HIGH_OCTAVE = 6;
+const MELODY_LANE_MAX_HEIGHT = 360;
+
+interface MelodyPitch {
+  pitch: NoteName;
+  octave: number;
+}
+
+const getPitchIndex = (pitch: NoteName, octave: number) => octave * NOTE_NAMES.length + NOTE_NAMES.indexOf(pitch);
+
+const createMelodyPitches = (lowOctave: number, highOctave: number): MelodyPitch[] => {
+  const lowIndex = getPitchIndex('C', lowOctave);
+  const highIndex = getPitchIndex('C', highOctave);
+
+  return Array.from({ length: highIndex - lowIndex + 1 }, (_, offset) => {
+    const pitchIndex = highIndex - offset;
+    const noteIndex = pitchIndex % NOTE_NAMES.length;
+
+    return {
+      pitch: NOTE_NAMES[noteIndex],
+      octave: Math.floor(pitchIndex / NOTE_NAMES.length),
+    };
+  });
+};
+
+const MELODY_PITCHES = createMelodyPitches(MELODY_LOW_OCTAVE, MELODY_HIGH_OCTAVE);
 
 const TimelineContainer = styled.div`
   flex: 1;
@@ -172,12 +206,164 @@ const BeatButton = styled('button', {
   }
 `;
 
+const MelodyHeader = styled.div`
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+`;
+
+const MelodyTitle = styled.div`
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 800;
+`;
+
+const MelodySelectionControls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+`;
+
+const MelodySelectionLabel = styled.span`
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 700;
+`;
+
+const MelodyActionButton = styled.button`
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #9aa9bd;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 0.78rem;
+  line-height: 1;
+
+  &:hover:not(:disabled) {
+    background: #e7eef7;
+  }
+`;
+
+const MelodyLane = styled.div`
+  position: relative;
+  border: 1px solid #d6dde6;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+`;
+
+const PitchLabels = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: ${PITCH_LABEL_WIDTH}px;
+  display: grid;
+  grid-template-rows: repeat(${MELODY_PITCHES.length}, ${MELODY_ROW_HEIGHT}px);
+  border-right: 1px solid #cbd5e1;
+  background: #f8fafc;
+`;
+
+const PitchLabel = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 700;
+`;
+
+const MelodyCells = styled.div`
+  display: grid;
+  margin-left: ${PITCH_LABEL_WIDTH}px;
+`;
+
+const MelodyCell = styled('button', {
+  shouldForwardProp: (prop) =>
+    prop !== 'isChordTone' && prop !== 'isOccupied' && prop !== 'isMeasureStart',
+})<{ isChordTone: boolean; isOccupied: boolean; isMeasureStart: boolean }>`
+  width: ${BEAT_WIDTH}px;
+  height: ${MELODY_ROW_HEIGHT}px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  border-left: ${(props) => (props.isMeasureStart ? '2px solid #8aa0b8' : '0')};
+  border-radius: 0;
+  background: ${(props) => {
+    if (props.isOccupied) {
+      return '#eef8f4';
+    }
+
+    if (props.isChordTone) {
+      return '#fff7d6';
+    }
+
+    return '#ffffff';
+  }};
+
+  &:hover {
+    background: ${(props) => (props.isChordTone ? '#ffefad' : '#e7eef7')};
+  }
+`;
+
+const MelodyNotesLayer = styled.div`
+  position: absolute;
+  top: 0;
+  left: ${PITCH_LABEL_WIDTH}px;
+  z-index: 3;
+`;
+
+const MelodyNoteBlock = styled('button', {
+  shouldForwardProp: (prop) => prop !== 'isSelected' && prop !== 'isCompact',
+})<{ isSelected: boolean; isCompact: boolean }>`
+  position: absolute;
+  height: ${MELODY_ROW_HEIGHT - 4}px;
+  display: flex;
+  align-items: center;
+  justify-content: ${(props) => (props.isCompact ? 'center' : 'space-between')};
+  gap: 4px;
+  padding: ${(props) => (props.isCompact ? '0 3px' : '0 6px')};
+  border: 1px solid ${(props) => (props.isSelected ? '#1d4ed8' : '#315f52')};
+  border-radius: 5px;
+  background: ${(props) => (props.isSelected ? '#dbeafe' : '#cceedd')};
+  color: #12382f;
+  box-shadow: 0 2px 5px rgba(25, 72, 60, 0.12);
+  font-size: 0.7rem;
+  font-weight: 800;
+  overflow: hidden;
+`;
+
+const MelodyNoteText = styled.span`
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
 interface TimelineGridProps {
   song: Song;
   measuresPerRow: number;
+  selectedMelodyNoteId: string | null;
   onBeatClick: (startBeat: number) => void;
   onChordDelete: (chordId: string) => void;
   onChordResize: (chordId: string, durationBeats: number) => void;
+  onMelodyCellClick: (startBeat: number, pitch: NoteName, octave: number) => void;
+  onMelodyNoteSelect: (noteId: string) => void;
+  onMelodyNoteDelete: (noteId: string) => void;
+  onMelodyNoteResize: (noteId: string, durationBeats: number) => void;
 }
 
 interface TimelineRow {
@@ -189,6 +375,14 @@ interface TimelineRow {
 
 const getDisplayDuration = (chord: ChordEvent, totalBeats: number) =>
   Math.max(1, Math.min(chord.durationBeats, totalBeats - chord.startBeat));
+
+const getMelodyDisplayDuration = (note: MelodyNote, totalBeats: number) =>
+  Math.max(1, Math.min(note.durationBeats, totalBeats - note.startBeat));
+
+const formatPitch = ({ pitch, octave }: MelodyPitch) => `${pitch}${octave}`;
+
+const isSamePitch = (note: MelodyNote, pitch: MelodyPitch) =>
+  note.pitch === pitch.pitch && note.octave === pitch.octave;
 
 const createTimelineRows = (song: Song, measuresPerRow: number): TimelineRow[] => {
   const safeMeasuresPerRow = Math.max(1, Math.floor(measuresPerRow) || 4);
@@ -210,9 +404,14 @@ const createTimelineRows = (song: Song, measuresPerRow: number): TimelineRow[] =
 export function TimelineGrid({
   song,
   measuresPerRow,
+  selectedMelodyNoteId,
   onBeatClick,
   onChordDelete,
   onChordResize,
+  onMelodyCellClick,
+  onMelodyNoteSelect,
+  onMelodyNoteDelete,
+  onMelodyNoteResize,
 }: TimelineGridProps) {
   const totalBeats = getTotalBeats(song);
   const measureWidth = song.timeSignature.beatsPerMeasure * BEAT_WIDTH;
@@ -220,9 +419,27 @@ export function TimelineGrid({
   const visibleChords = sortChordEvents(song.chords).filter(
     (chord) => chord.startBeat >= 0 && chord.startBeat < totalBeats,
   );
+  const visibleMelodyNotes = sortMelodyNotes(song.melodyNotes).filter(
+    (note) => note.startBeat >= 0 && note.startBeat < totalBeats,
+  );
+  const selectedMelodyNote =
+    selectedMelodyNoteId
+      ? visibleMelodyNotes.find((note) => note.id === selectedMelodyNoteId) ?? null
+      : null;
+  const selectedMelodyMaxDuration =
+    selectedMelodyNote ? getMelodyNoteMaxDurationBeats(song, selectedMelodyNote.id) : 1;
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!selectedMelodyNoteId || (event.key !== 'Delete' && event.key !== 'Backspace')) {
+      return;
+    }
+
+    event.preventDefault();
+    onMelodyNoteDelete(selectedMelodyNoteId);
+  };
 
   return (
-    <TimelineContainer>
+    <TimelineContainer tabIndex={0} onKeyDown={handleKeyDown}>
       <TimelineScroller>
         <TimelineRows>
           {rows.map((row) => {
@@ -250,6 +467,34 @@ export function TimelineGrid({
                 segmentDurationBeats: segmentEndBeat - segmentStartBeat,
               }];
             });
+            const melodySegments = visibleMelodyNotes.flatMap((note) => {
+              const pitchIndex = MELODY_PITCHES.findIndex((pitch) => isSamePitch(note, pitch));
+
+              if (pitchIndex === -1) {
+                return [];
+              }
+
+              const noteEndBeat = Math.min(getMelodyNoteEndBeat(note), totalBeats);
+              const segmentStartBeat = Math.max(note.startBeat, row.startBeat);
+              const segmentEndBeat = Math.min(noteEndBeat, rowEndBeat);
+
+              if (segmentEndBeat <= segmentStartBeat) {
+                return [];
+              }
+
+              return [{
+                note,
+                pitchIndex,
+                segmentStartBeat,
+                segmentDurationBeats: segmentEndBeat - segmentStartBeat,
+              }];
+            });
+            const selectedNoteInRow =
+              selectedMelodyNote &&
+              selectedMelodyNote.startBeat < rowEndBeat &&
+              getMelodyNoteEndBeat(selectedMelodyNote) > row.startBeat
+                ? selectedMelodyNote
+                : null;
 
             return (
               <TimelineRowSurface key={row.startMeasure} style={{ width: row.beatCount * BEAT_WIDTH }}>
@@ -341,6 +586,151 @@ export function TimelineGrid({
                     );
                   })}
                 </BeatRow>
+
+                <MelodyHeader>
+                  <MelodyTitle>メロディ</MelodyTitle>
+                  {selectedNoteInRow && (
+                    <MelodySelectionControls>
+                      <MelodySelectionLabel>
+                        {formatPitch(selectedNoteInRow)} / {getMelodyDisplayDuration(selectedNoteInRow, totalBeats)}拍
+                      </MelodySelectionLabel>
+                      <MelodyActionButton
+                        type="button"
+                        title="1拍短く"
+                        aria-label={`${formatPitch(selectedNoteInRow)}を1拍短く`}
+                        disabled={selectedNoteInRow.durationBeats <= 1}
+                        onClick={() =>
+                          onMelodyNoteResize(
+                            selectedNoteInRow.id,
+                            selectedNoteInRow.durationBeats - 1,
+                          )
+                        }
+                      >
+                        -
+                      </MelodyActionButton>
+                      <MelodyActionButton
+                        type="button"
+                        title="1拍長く"
+                        aria-label={`${formatPitch(selectedNoteInRow)}を1拍長く`}
+                        disabled={selectedNoteInRow.durationBeats >= selectedMelodyMaxDuration}
+                        onClick={() =>
+                          onMelodyNoteResize(
+                            selectedNoteInRow.id,
+                            selectedNoteInRow.durationBeats + 1,
+                          )
+                        }
+                      >
+                        +
+                      </MelodyActionButton>
+                      <MelodyActionButton
+                        type="button"
+                        title="削除"
+                        aria-label={`${formatPitch(selectedNoteInRow)}を削除`}
+                        onClick={() => onMelodyNoteDelete(selectedNoteInRow.id)}
+                      >
+                        x
+                      </MelodyActionButton>
+                    </MelodySelectionControls>
+                  )}
+                </MelodyHeader>
+
+                <MelodyLane
+                  style={{
+                    width: PITCH_LABEL_WIDTH + row.beatCount * BEAT_WIDTH,
+                    height: Math.min(
+                      MELODY_PITCHES.length * MELODY_ROW_HEIGHT,
+                      MELODY_LANE_MAX_HEIGHT,
+                    ),
+                  }}
+                >
+                  <PitchLabels>
+                    {MELODY_PITCHES.map((pitch) => (
+                      <PitchLabel key={formatPitch(pitch)}>{formatPitch(pitch)}</PitchLabel>
+                    ))}
+                  </PitchLabels>
+
+                  <MelodyCells
+                    style={{
+                      gridTemplateColumns: `repeat(${row.beatCount}, ${BEAT_WIDTH}px)`,
+                      gridTemplateRows: `repeat(${MELODY_PITCHES.length}, ${MELODY_ROW_HEIGHT}px)`,
+                    }}
+                  >
+                    {MELODY_PITCHES.flatMap((pitch) =>
+                      beats.map((beat) => {
+                        const isMeasureStart = beat % song.timeSignature.beatsPerMeasure === 0;
+                        const activeChord = visibleChords.find(
+                          (chord) => beat >= chord.startBeat && beat < getChordEndBeat(chord),
+                        );
+                        const isChordTone = activeChord
+                          ? getChordNotes(activeChord.root, activeChord.quality).includes(pitch.pitch)
+                          : false;
+                        const occupiedNote = visibleMelodyNotes.find(
+                          (note) =>
+                            isSamePitch(note, pitch) &&
+                            beat >= note.startBeat &&
+                            beat < getMelodyNoteEndBeat(note),
+                        );
+
+                        return (
+                          <MelodyCell
+                            key={`${formatPitch(pitch)}-${beat}`}
+                            type="button"
+                            isChordTone={isChordTone}
+                            isOccupied={Boolean(occupiedNote)}
+                            isMeasureStart={isMeasureStart}
+                            aria-label={`${Math.floor(beat / song.timeSignature.beatsPerMeasure) + 1}小節 ${
+                              (beat % song.timeSignature.beatsPerMeasure) + 1
+                            }拍目 ${formatPitch(pitch)}`}
+                            onClick={() => {
+                              if (occupiedNote) {
+                                onMelodyNoteSelect(occupiedNote.id);
+                                return;
+                              }
+
+                              onMelodyCellClick(beat, pitch.pitch, pitch.octave);
+                            }}
+                          />
+                        );
+                      }),
+                    )}
+                  </MelodyCells>
+
+                  <MelodyNotesLayer>
+                    {melodySegments.map(({ note, pitchIndex, segmentStartBeat, segmentDurationBeats }) => {
+                      const isCompact = segmentDurationBeats === 1;
+                      const isSelected = note.id === selectedMelodyNoteId;
+
+                      return (
+                        <MelodyNoteBlock
+                          key={`${note.id}-${segmentStartBeat}`}
+                          type="button"
+                          isSelected={isSelected}
+                          isCompact={isCompact}
+                          title={`${formatPitch(note)} ${getMelodyDisplayDuration(note, totalBeats)}拍`}
+                          aria-label={`${formatPitch(note)}を選択`}
+                          style={{
+                            left: (segmentStartBeat - row.startBeat) * BEAT_WIDTH + 2,
+                            top: pitchIndex * MELODY_ROW_HEIGHT + 2,
+                            width: Math.max(28, segmentDurationBeats * BEAT_WIDTH - 4),
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onMelodyNoteSelect(note.id);
+                          }}
+                        >
+                          <MelodyNoteText>
+                            {isCompact ? note.pitch : formatPitch(note)}
+                          </MelodyNoteText>
+                          {!isCompact && (
+                            <MelodyNoteText>
+                              {getMelodyDisplayDuration(note, totalBeats)}拍
+                            </MelodyNoteText>
+                          )}
+                        </MelodyNoteBlock>
+                      );
+                    })}
+                  </MelodyNotesLayer>
+                </MelodyLane>
               </TimelineRowSurface>
             );
           })}

@@ -1,5 +1,12 @@
 import { getChordNotes } from './chords';
-import type { ChordDefinition, ChordEvent, Song, TimeSignature } from './types';
+import type {
+  ChordDefinition,
+  ChordEvent,
+  MelodyNote,
+  NoteName,
+  Song,
+  TimeSignature,
+} from './types';
 
 export const DEFAULT_TOTAL_MEASURES = 16;
 export const DEFAULT_BPM = 120;
@@ -19,7 +26,7 @@ export interface ChordGridMeasure {
   position: number;
 }
 
-const createId = (prefix: string) => {
+export const createMusicId = (prefix: string) => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
@@ -59,6 +66,10 @@ export const getTotalBeats = (song: Pick<Song, 'timeSignature' | 'totalMeasures'
 export const getChordEndBeat = (chord: Pick<ChordEvent, 'startBeat' | 'durationBeats'>) =>
   chord.startBeat + chord.durationBeats;
 
+export const getMelodyNoteEndBeat = (
+  note: Pick<MelodyNote, 'startBeat' | 'durationBeats'>,
+) => note.startBeat + note.durationBeats;
+
 export const sortChordEvents = (chords: ChordEvent[]) =>
   [...chords].sort((a, b) => {
     if (a.startBeat === b.startBeat) {
@@ -66,6 +77,23 @@ export const sortChordEvents = (chords: ChordEvent[]) =>
     }
 
     return a.startBeat - b.startBeat;
+  });
+
+export const sortMelodyNotes = (notes: MelodyNote[]) =>
+  [...notes].sort((a, b) => {
+    if (a.startBeat !== b.startBeat) {
+      return a.startBeat - b.startBeat;
+    }
+
+    if (a.octave !== b.octave) {
+      return a.octave - b.octave;
+    }
+
+    if (a.pitch !== b.pitch) {
+      return a.pitch.localeCompare(b.pitch);
+    }
+
+    return a.id.localeCompare(b.id);
   });
 
 export const chordEventToChordDefinition = (chord: ChordEvent): ChordDefinition => ({
@@ -91,7 +119,7 @@ export const createEmptySong = (options: Partial<Song> = {}): Song => {
   const now = new Date().toISOString();
 
   return {
-    id: options.id ?? createId('song'),
+    id: options.id ?? createMusicId('song'),
     title: options.title ?? '新規曲',
     bpm: options.bpm ?? DEFAULT_BPM,
     timeSignature: options.timeSignature ?? DEFAULT_TIME_SIGNATURE,
@@ -119,7 +147,7 @@ export const gridToChordEvents = (
       const durationBeats = Math.max(1, beat.duration);
 
       return {
-        id: createId('chord'),
+        id: createMusicId('chord'),
         root: beat.chord.root,
         quality: beat.chord.type,
         startBeat: measurePosition * timeSignature.beatsPerMeasure + beatPosition,
@@ -281,7 +309,7 @@ export const insertChordInSong = (
   );
   const nextBoundary = nextChord ? nextChord.startBeat : totalBeats;
   const insertedChord: ChordEvent = {
-    id: createId('chord'),
+    id: createMusicId('chord'),
     root: chord.root,
     quality: chord.type,
     startBeat: nextStartBeat,
@@ -335,6 +363,109 @@ export const resizeChordInSong = (
     ...song,
     chords: sortChordEvents(song.chords.map((chord) => (
       chord.id === chordId ? { ...chord, durationBeats: nextDuration } : chord
+    ))),
+  };
+};
+
+const isSameMelodyPitch = (
+  first: Pick<MelodyNote, 'pitch' | 'octave'>,
+  second: Pick<MelodyNote, 'pitch' | 'octave'>,
+) => first.pitch === second.pitch && first.octave === second.octave;
+
+export const getMelodyNoteMaxDurationBeats = (song: Song, noteId: string) => {
+  const targetNote = song.melodyNotes.find((note) => note.id === noteId);
+
+  if (!targetNote) {
+    return 1;
+  }
+
+  const totalBeats = getTotalBeats(song);
+  const nextNote = sortMelodyNotes(song.melodyNotes).find(
+    (note) =>
+      note.id !== noteId &&
+      isSameMelodyPitch(note, targetNote) &&
+      note.startBeat > targetNote.startBeat,
+  );
+  const nextBoundary = nextNote ? nextNote.startBeat : totalBeats;
+
+  return Math.max(1, Math.floor(nextBoundary - targetNote.startBeat));
+};
+
+export const insertMelodyNoteInSong = (
+  song: Song,
+  startBeat: number,
+  pitch: NoteName,
+  octave: number,
+  noteId = createMusicId('melody'),
+): Song => {
+  const totalBeats = getTotalBeats(song);
+
+  if (totalBeats === 0) {
+    return song;
+  }
+
+  const nextStartBeat = clampBeatPosition(startBeat, totalBeats);
+  const nextOctave = Math.max(0, Math.min(8, Math.round(octave)));
+  const insertedNote: MelodyNote = {
+    id: noteId,
+    pitch,
+    octave: nextOctave,
+    startBeat: nextStartBeat,
+    durationBeats: 1,
+    velocity: 0.8,
+  };
+
+  const preservedNotes = song.melodyNotes.flatMap((existingNote): MelodyNote[] => {
+    if (!isSameMelodyPitch(existingNote, insertedNote)) {
+      return [existingNote];
+    }
+
+    if (existingNote.startBeat === nextStartBeat) {
+      return [];
+    }
+
+    if (
+      existingNote.startBeat < nextStartBeat &&
+      getMelodyNoteEndBeat(existingNote) > nextStartBeat
+    ) {
+      return [{
+        ...existingNote,
+        durationBeats: Math.max(1, nextStartBeat - existingNote.startBeat),
+      }];
+    }
+
+    return [existingNote];
+  });
+
+  return {
+    ...song,
+    melodyNotes: sortMelodyNotes([...preservedNotes, insertedNote]),
+  };
+};
+
+export const deleteMelodyNoteFromSong = (song: Song, noteId: string): Song => ({
+  ...song,
+  melodyNotes: song.melodyNotes.filter((note) => note.id !== noteId),
+});
+
+export const resizeMelodyNoteInSong = (
+  song: Song,
+  noteId: string,
+  durationBeats: number,
+): Song => {
+  const targetNote = song.melodyNotes.find((note) => note.id === noteId);
+
+  if (!targetNote) {
+    return song;
+  }
+
+  const maxDuration = getMelodyNoteMaxDurationBeats(song, noteId);
+  const nextDuration = Math.max(1, Math.min(Math.round(durationBeats), maxDuration));
+
+  return {
+    ...song,
+    melodyNotes: sortMelodyNotes(song.melodyNotes.map((note) => (
+      note.id === noteId ? { ...note, durationBeats: nextDuration } : note
     ))),
   };
 };
