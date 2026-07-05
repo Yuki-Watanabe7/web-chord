@@ -107,6 +107,73 @@ export const gridToChordEvents = (
     });
   });
 
+export const resizeChordGridToTimeSignature = (
+  grid: ChordGridMeasure[],
+  timeSignature: TimeSignature,
+): ChordGridMeasure[] =>
+  grid.map((measure) => ({
+    ...measure,
+    beats: Array.from({ length: timeSignature.beatsPerMeasure }, (_, beatIndex) => ({
+      chord: measure.beats[beatIndex]?.chord ?? null,
+      position: beatIndex,
+      duration: 1,
+    })),
+  }));
+
+export const placeChordOnGrid = (
+  grid: ChordGridMeasure[],
+  measurePosition: number,
+  beatPosition: number,
+  chord: ChordDefinition,
+): ChordGridMeasure[] =>
+  grid.map((measure) => {
+    if (measure.position !== measurePosition) {
+      return measure;
+    }
+
+    const updatedBeats = measure.beats.map((beat, index) => {
+      if (index < beatPosition && beat.chord !== null) {
+        let duration = 1;
+
+        for (let nextIndex = index + 1; nextIndex < beatPosition; nextIndex++) {
+          if (measure.beats[nextIndex]?.chord === null) {
+            duration++;
+          } else {
+            break;
+          }
+        }
+
+        return { ...beat, duration };
+      }
+
+      return beat;
+    });
+
+    let duration = 1;
+    for (let index = beatPosition + 1; index < measure.beats.length; index++) {
+      if (updatedBeats[index]?.chord === null) {
+        duration++;
+      } else {
+        break;
+      }
+    }
+
+    return {
+      ...measure,
+      beats: updatedBeats.map((beat, index) => {
+        if (index === beatPosition) {
+          return { ...beat, chord, duration };
+        }
+
+        if (index > beatPosition && index < beatPosition + duration) {
+          return { ...beat, chord: null, duration: 1 };
+        }
+
+        return beat;
+      }),
+    };
+  });
+
 export const songToGrid = (song: Song): ChordGridMeasure[] => {
   const grid = createEmptyGrid(song.totalMeasures, song.timeSignature.beatsPerMeasure);
 
@@ -134,4 +201,28 @@ export const songToGrid = (song: Song): ChordGridMeasure[] => {
   });
 
   return grid;
+};
+
+export const changeSongTimeSignature = (song: Song, timeSignature: TimeSignature): Song => {
+  const nextGrid = resizeChordGridToTimeSignature(songToGrid(song), timeSignature);
+
+  return {
+    ...song,
+    timeSignature,
+    chords: gridToChordEvents(nextGrid, timeSignature),
+  };
+};
+
+export const placeChordInSong = (
+  song: Song,
+  measurePosition: number,
+  beatPosition: number,
+  chord: ChordDefinition,
+): Song => {
+  const nextGrid = placeChordOnGrid(songToGrid(song), measurePosition, beatPosition, chord);
+
+  return {
+    ...song,
+    chords: gridToChordEvents(nextGrid, song.timeSignature),
+  };
 };
