@@ -1,54 +1,157 @@
-# React + TypeScript + Vite
+# web-chord
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+初心者やカジュアルな作曲向けの、コード進行から曲のアイデアを作るためのシンプルなMIDI作成ツールです。
 
-Currently, two official plugins are available:
+GarageBandのような本格DAWを置き換えるのではなく、まずコードを並べ、コードに合うメロディを置き、再生して、MIDIとして書き出すところに絞っています。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Features
 
-## Expanding the ESLint configuration
+- 曲一覧ページ
+- 曲エディタページ
+- コードパレット
+- 拍単位のコード挿入
+- コードの削除と長さ変更
+- 小節をまたぐコード表示
+- メジャーガイド付きタイムライン
+- BPM設定
+- 拍子設定: `2/4`, `3/4`, `4/4`, `5/4`, `6/8`
+- タイムラインの折り返し小節数設定
+- ピアノロール形式のメロディ編集
+- メロディノートの追加、選択、削除、長さ変更
+- 現在のコードトーンのハイライト
+- メロディノートのクリック時プレビュー
+- コードとメロディの同時再生
+- `localStorage` による保存と読み込み
+- 旧グリッド形式の保存データからイベント形式への移行
+- MIDI書き出し
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Current Workflow
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+1. 曲一覧から新規作成、または保存済みの曲を開く
+2. コードパレットからコードを選ぶ
+3. タイムラインの拍をクリックしてコードを配置する
+4. コードブロックの `+`, `-`, `x` で長さ変更や削除を行う
+5. メロディ欄のセルをクリックしてノートを追加する
+6. ノートを選択して長さ変更や削除を行う
+7. 再生でコードとメロディを確認する
+8. 保存、またはMIDI書き出しを行う
+
+## MIDI Export
+
+MIDI書き出しでは、現在の `Song` モデルをそのまま標準MIDIファイルへ変換します。
+
+- `Song.bpm` をテンポイベントへ反映
+- `Song.timeSignature` を拍子イベントへ反映
+- `ChordEvent[]` を `Chords` トラックへ出力
+- `MelodyNote[]` を `Melody` トラックへ出力
+
+書き出しファイル名は曲名をもとにした `.mid` ファイルになります。
+
+## Tech Stack
+
+- Vite
+- React
+- TypeScript
+- Emotion
+- React Router
+- Tone.js
+- localStorage
+
+## Project Structure
+
+```text
+src/
+  components/editor/
+    ChordPalette.tsx
+    SongControls.tsx
+    TimelineGrid.tsx
+    TransportControls.tsx
+  domain/music/
+    chords.ts
+    migration.ts
+    timeline.ts
+    types.ts
+  pages/
+    Editor.tsx
+    SongList.tsx
+  services/
+    midiExport.ts
+    playback.ts
+    songStorage.ts
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Domain Model
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+曲データはUIグリッドではなく、拍位置ベースのイベントモデルで扱います。
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+```ts
+export interface ChordEvent {
+  id: string;
+  root: NoteName;
+  quality: ChordQuality;
+  startBeat: number;
+  durationBeats: number;
+}
+
+export interface MelodyNote {
+  id: string;
+  pitch: NoteName;
+  octave: number;
+  startBeat: number;
+  durationBeats: number;
+  velocity: number;
+}
+
+export interface Song {
+  id: string;
+  title: string;
+  bpm: number;
+  timeSignature: {
+    beatsPerMeasure: number;
+    beatUnit: number;
+  };
+  totalMeasures: number;
+  chords: ChordEvent[];
+  melodyNotes: MelodyNote[];
+  createdAt: string;
+  updatedAt: string;
+}
 ```
+
+## Development
+
+依存関係をインストールします。
+
+```sh
+npm install
+```
+
+開発サーバーを起動します。
+
+```sh
+npm run dev
+```
+
+lintを実行します。
+
+```sh
+npm run lint
+```
+
+本番ビルドを確認します。
+
+```sh
+npm run build
+```
+
+ビルド済みアプリをプレビューします。
+
+```sh
+npm run preview
+```
+
+## Product Direction
+
+今後も本格DAWの機能を広げすぎず、コード編集、メロディ編集、再生、保存、MIDI書き出しを中心に育てます。
+
+音楽理論の補助は、ユーザーが知識を暗記しなくても使える形でUIに埋め込む方針です。現在はコードトーンのハイライトまで実装済みで、スケールトーンやおすすめノートの提示は次の改善候補です。
