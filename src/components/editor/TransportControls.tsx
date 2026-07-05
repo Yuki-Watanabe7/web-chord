@@ -13,6 +13,7 @@ interface TransportControlsProps {
   onPlay: () => void;
   onClear: () => void;
   onSave: () => void;
+  onExportMidi: () => void;
 }
 
 export function TransportControls({
@@ -20,6 +21,7 @@ export function TransportControls({
   onPlay,
   onClear,
   onSave,
+  onExportMidi,
 }: TransportControlsProps) {
   return (
     <ControlPanel>
@@ -28,6 +30,7 @@ export function TransportControls({
       </button>
       <button onClick={onClear}>クリア</button>
       <button onClick={onSave}>保存</button>
+      <button onClick={onExportMidi}>MIDI書き出し</button>
     </ControlPanel>
   );
 }

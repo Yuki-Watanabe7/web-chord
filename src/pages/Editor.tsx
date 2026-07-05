@@ -18,11 +18,12 @@ import {
   resizeMelodyNoteInSong,
 } from '../domain/music/timeline';
 import {
-  createChordPlaybackSynth,
-  playChordProgression,
+  createSongPlaybackSynths,
+  playSong,
   previewMelodyNote,
 } from '../services/playback';
-import type { ChordPlaybackSynth } from '../services/playback';
+import type { SongPlaybackSynths } from '../services/playback';
+import { createMidiBlob, createMidiFileName } from '../services/midiExport';
 import { loadSong, saveSong } from '../services/songStorage';
 import type { NoteName } from '../domain/music/types';
 import type { Chord } from '../types/chord';
@@ -56,12 +57,12 @@ function Editor() {
   const [song, setSong] = useState<Song>(() => createEmptySong({ id }));
   const [selectedChord, setSelectedChord] = useState<Chord | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [synth, setSynth] = useState<ChordPlaybackSynth | null>(null);
+  const [synth, setSynth] = useState<SongPlaybackSynths | null>(null);
   const [measuresPerRow, setMeasuresPerRow] = useState(4);
   const [selectedMelodyNoteId, setSelectedMelodyNoteId] = useState<string | null>(null);
 
   useEffect(() => {
-    const newSynth = createChordPlaybackSynth();
+    const newSynth = createSongPlaybackSynths();
     setSynth(newSynth);
 
     return () => {
@@ -106,7 +107,7 @@ function Editor() {
       return;
     }
 
-    void previewMelodyNote(synth, { pitch, octave, velocity });
+    void previewMelodyNote(synth.melody, { pitch, octave, velocity });
   };
 
   const handleMelodyCellClick = (startBeat: number, pitch: NoteName, octave: number) => {
@@ -143,7 +144,7 @@ function Editor() {
     setIsPlaying(true);
 
     try {
-      await playChordProgression(song, synth);
+      await playSong(song, synth);
     } finally {
       setIsPlaying(false);
     }
@@ -161,6 +162,20 @@ function Editor() {
   const handleSave = () => {
     saveSong(song);
     navigate('/');
+  };
+
+  const handleMidiExport = () => {
+    const midiBlob = createMidiBlob(song);
+    const url = URL.createObjectURL(midiBlob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = createMidiFileName(song);
+    link.click();
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 0);
   };
 
   return (
@@ -197,6 +212,7 @@ function Editor() {
         onPlay={playProgression}
         onClear={clearGrid}
         onSave={handleSave}
+        onExportMidi={handleMidiExport}
       />
     </AppContainer>
   );
