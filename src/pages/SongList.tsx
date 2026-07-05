@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import styled from '@emotion/styled';
 import type { Song } from '../types/song';
 import { useNavigate } from 'react-router-dom';
+import { formatTimeSignature } from '../domain/music/timeline';
+import { loadSongs } from '../services/songStorage';
 
 const Container = styled.div`
   max-width: 800px;
@@ -66,11 +68,7 @@ function SongList() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // ローカルストレージから曲の一覧を読み込む
-    const savedSongs = localStorage.getItem('songs');
-    if (savedSongs) {
-      setSongs(JSON.parse(savedSongs));
-    }
+    setSongs(loadSongs());
   }, []);
 
   const handleNewSong = () => {
@@ -92,7 +90,7 @@ function SongList() {
           <SongCard key={song.id} onClick={() => handleSongClick(song.id)}>
             <SongTitle>{song.title}</SongTitle>
             <SongInfo>
-              BPM: {song.bpm} | 拍子: {song.timeSignature} | 
+              BPM: {song.bpm} | 拍子: {formatTimeSignature(song.timeSignature)} | 
               更新日時: {new Date(song.updatedAt).toLocaleString()}
             </SongInfo>
           </SongCard>
