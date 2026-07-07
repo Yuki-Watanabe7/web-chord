@@ -7,6 +7,8 @@ import { TimelineGrid } from '../components/editor/TimelineGrid';
 import { TransportControls } from '../components/editor/TransportControls';
 import {
   changeSongTimeSignature,
+  canPasteMeasureRangeClipboard,
+  copyMeasureRangeFromSong,
   createMusicId,
   createEmptySong,
   deleteChordFromSong,
@@ -16,6 +18,7 @@ import {
   insertMelodyNoteInSong,
   canDuplicateMeasureRangeToNext,
   normalizeMeasureRange,
+  pasteMeasureRangeClipboard,
   parseTimeSignature,
   resizeChordInSong,
   resizeMelodyNoteInSong,
@@ -28,7 +31,7 @@ import {
 import type { SongPlaybackSynths } from '../services/playback';
 import { createMidiBlob, createMidiFileName } from '../services/midiExport';
 import { loadSong, saveSong } from '../services/songStorage';
-import type { MeasureRange } from '../domain/music/timeline';
+import type { MeasureRange, MeasureRangeClipboard } from '../domain/music/timeline';
 import type { NoteName } from '../domain/music/types';
 import type { Chord } from '../types/chord';
 import type { Song } from '../types/song';
@@ -64,6 +67,7 @@ function Editor() {
   const [synth, setSynth] = useState<SongPlaybackSynths | null>(null);
   const [measuresPerRow, setMeasuresPerRow] = useState(4);
   const [selectedMelodyNoteId, setSelectedMelodyNoteId] = useState<string | null>(null);
+  const [measureClipboard, setMeasureClipboard] = useState<MeasureRangeClipboard | null>(null);
   const [selectedMeasureRange, setSelectedMeasureRange] = useState<MeasureRange>({
     startMeasure: 0,
     measureCount: 1,
@@ -87,6 +91,10 @@ function Editor() {
     if (loadedSong) {
       setSong(loadedSong);
     }
+  }, [id]);
+
+  useEffect(() => {
+    setMeasureClipboard(null);
   }, [id]);
 
   useEffect(() => {
@@ -152,6 +160,17 @@ function Editor() {
 
   const handleMeasureRangeChange = (range: MeasureRange) => {
     setSelectedMeasureRange(normalizeMeasureRange(song, range));
+  };
+
+  const handleCopyMeasureRange = () => {
+    setMeasureClipboard(copyMeasureRangeFromSong(song, selectedMeasureRange));
+  };
+
+  const handlePasteMeasureRange = () => {
+    setSong((prev) =>
+      pasteMeasureRangeClipboard(prev, measureClipboard, selectedMeasureRange.startMeasure),
+    );
+    setSelectedMelodyNoteId(null);
   };
 
   const handleDuplicateMeasureRange = () => {
@@ -222,10 +241,17 @@ function Editor() {
           selectedMelodyNoteId={selectedMelodyNoteId}
           selectedMeasureRange={selectedMeasureRange}
           canDuplicateMeasureRange={canDuplicateMeasureRangeToNext(song, selectedMeasureRange)}
+          canPasteMeasureRange={canPasteMeasureRangeClipboard(
+            song,
+            measureClipboard,
+            selectedMeasureRange.startMeasure,
+          )}
           onBeatClick={handleBeatClick}
           onChordDelete={handleChordDelete}
           onChordResize={handleChordResize}
           onMeasureRangeChange={handleMeasureRangeChange}
+          onCopyMeasureRange={handleCopyMeasureRange}
+          onPasteMeasureRange={handlePasteMeasureRange}
           onDuplicateMeasureRange={handleDuplicateMeasureRange}
           onMelodyCellClick={handleMelodyCellClick}
           onMelodyNoteSelect={handleMelodyNoteSelect}

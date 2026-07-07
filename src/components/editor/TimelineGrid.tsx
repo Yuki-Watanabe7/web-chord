@@ -61,6 +61,7 @@ const SelectionToolbar = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 10px 12px;
   border-bottom: 1px solid #d6dde6;
@@ -73,7 +74,15 @@ const SelectionSummary = styled.div`
   font-weight: 800;
 `;
 
-const DuplicateRangeButton = styled.button`
+const RangeActionGroup = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+`;
+
+const RangeActionButton = styled.button`
   padding: 6px 10px;
   border: 1px solid #256d5a;
   border-radius: 6px;
@@ -84,6 +93,11 @@ const DuplicateRangeButton = styled.button`
 
   &:hover:not(:disabled) {
     background: #c9ecd9;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 `;
 
@@ -418,10 +432,13 @@ interface TimelineGridProps {
   selectedMelodyNoteId: string | null;
   selectedMeasureRange: MeasureRange;
   canDuplicateMeasureRange: boolean;
+  canPasteMeasureRange: boolean;
   onBeatClick: (startBeat: number) => void;
   onChordDelete: (chordId: string) => void;
   onChordResize: (chordId: string, durationBeats: number) => void;
   onMeasureRangeChange: (range: MeasureRange) => void;
+  onCopyMeasureRange: () => void;
+  onPasteMeasureRange: () => void;
   onDuplicateMeasureRange: () => void;
   onMelodyCellClick: (startBeat: number, pitch: NoteName, octave: number) => void;
   onMelodyNoteSelect: (noteId: string) => void;
@@ -471,6 +488,19 @@ const formatMeasureRange = (range: MeasureRange) => {
   return `${startMeasureLabel}-${endMeasureLabel}小節目`;
 };
 
+const isTextEditingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT'
+  );
+};
+
 const createTimelineRows = (song: Song, measuresPerRow: number): TimelineRow[] => {
   const safeMeasuresPerRow = Math.max(1, Math.floor(measuresPerRow) || 4);
   const rowCount = Math.ceil(song.totalMeasures / safeMeasuresPerRow);
@@ -494,10 +524,13 @@ export function TimelineGrid({
   selectedMelodyNoteId,
   selectedMeasureRange,
   canDuplicateMeasureRange,
+  canPasteMeasureRange,
   onBeatClick,
   onChordDelete,
   onChordResize,
   onMeasureRangeChange,
+  onCopyMeasureRange,
+  onPasteMeasureRange,
   onDuplicateMeasureRange,
   onMelodyCellClick,
   onMelodyNoteSelect,
@@ -539,6 +572,37 @@ export function TimelineGrid({
   }, [dragStartMeasure]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (isTextEditingTarget(event.target)) {
+      return;
+    }
+
+    const key = event.key.toLowerCase();
+    const isMenuShortcut = event.metaKey || event.ctrlKey;
+
+    if (isMenuShortcut && !event.altKey) {
+      if (key === 'c') {
+        event.preventDefault();
+        onCopyMeasureRange();
+        return;
+      }
+
+      if (key === 'v') {
+        if (canPasteMeasureRange) {
+          event.preventDefault();
+          onPasteMeasureRange();
+        }
+        return;
+      }
+
+      if (key === 'd') {
+        if (canDuplicateMeasureRange) {
+          event.preventDefault();
+          onDuplicateMeasureRange();
+        }
+        return;
+      }
+    }
+
     if (!selectedMelodyNoteId || (event.key !== 'Delete' && event.key !== 'Backspace')) {
       return;
     }
@@ -576,14 +640,31 @@ export function TimelineGrid({
     <TimelineContainer tabIndex={0} onKeyDown={handleKeyDown}>
       <SelectionToolbar>
         <SelectionSummary>小節選択: {formatMeasureRange(activeMeasureRange)}</SelectionSummary>
-        <DuplicateRangeButton
-          type="button"
-          title="選んだ小節を次の位置へ複製"
-          disabled={!canDuplicateMeasureRange}
-          onClick={onDuplicateMeasureRange}
-        >
-          次へ複製
-        </DuplicateRangeButton>
+        <RangeActionGroup>
+          <RangeActionButton
+            type="button"
+            title="選んだ小節をコピー (Cmd/Ctrl+C)"
+            onClick={onCopyMeasureRange}
+          >
+            コピー
+          </RangeActionButton>
+          <RangeActionButton
+            type="button"
+            title="コピーした小節を選択範囲の先頭へ貼り付け (Cmd/Ctrl+V)"
+            disabled={!canPasteMeasureRange}
+            onClick={onPasteMeasureRange}
+          >
+            貼り付け
+          </RangeActionButton>
+          <RangeActionButton
+            type="button"
+            title="選んだ小節を次の位置へ複製 (Cmd/Ctrl+D)"
+            disabled={!canDuplicateMeasureRange}
+            onClick={onDuplicateMeasureRange}
+          >
+            次へ複製
+          </RangeActionButton>
+        </RangeActionGroup>
       </SelectionToolbar>
       <TimelineScroller>
         <TimelineRows>
