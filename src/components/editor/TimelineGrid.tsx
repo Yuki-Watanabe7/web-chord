@@ -1,7 +1,8 @@
 import styled from '@emotion/styled';
-import type { KeyboardEvent } from 'react';
+import { useEffect, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
 import {
+  normalizeMeasureRange,
   getChordEndBeat,
   getChordMaxDurationBeats,
   getMelodyNoteEndBeat,
@@ -11,6 +12,7 @@ import {
   sortMelodyNotes,
 } from '../../domain/music/timeline';
 import type { ChordEvent, MelodyNote, NoteName, Song } from '../../domain/music/types';
+import type { MeasureRange } from '../../domain/music/timeline';
 
 const BEAT_WIDTH = 56;
 const PITCH_LABEL_WIDTH = 44;
@@ -46,13 +48,48 @@ const MELODY_PITCHES = createMelodyPitches(MELODY_LOW_OCTAVE, MELODY_HIGH_OCTAVE
 const TimelineContainer = styled.div`
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid #ccd3dc;
   border-radius: 8px;
   background: #f8fafc;
   overflow: hidden;
 `;
 
+const SelectionToolbar = styled.div`
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #d6dde6;
+  background: #ffffff;
+`;
+
+const SelectionSummary = styled.div`
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 800;
+`;
+
+const DuplicateRangeButton = styled.button`
+  padding: 6px 10px;
+  border: 1px solid #256d5a;
+  border-radius: 6px;
+  background: #dff5eb;
+  color: #12382f;
+  font-size: 0.82rem;
+  font-weight: 800;
+
+  &:hover:not(:disabled) {
+    background: #c9ecd9;
+  }
+`;
+
 const TimelineScroller = styled.div`
+  flex: 1;
+  min-height: 0;
   height: 100%;
   overflow: auto;
 `;
@@ -78,15 +115,37 @@ const MeasureGuideRow = styled.div`
   font-weight: 700;
 `;
 
-const MeasureGuide = styled.div`
+const MeasureGuide = styled('button', {
+  shouldForwardProp: (prop) => prop !== 'isSelected',
+})<{ isSelected: boolean }>`
   display: flex;
   align-items: center;
-  padding-left: 8px;
+  width: 100%;
+  padding: 0 0 0 8px;
+  border: 0;
   border-left: 2px solid #8aa0b8;
-  background: linear-gradient(to right, rgba(138, 160, 184, 0.14), transparent);
+  border-radius: 0;
+  background: ${(props) =>
+    props.isSelected
+      ? 'linear-gradient(to right, rgba(37, 109, 90, 0.22), rgba(37, 109, 90, 0.08))'
+      : 'linear-gradient(to right, rgba(138, 160, 184, 0.14), transparent)'};
+  color: ${(props) => (props.isSelected ? '#12382f' : '#4b5563')};
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
 
   &:last-of-type {
     border-right: 2px solid #8aa0b8;
+  }
+
+  &:hover {
+    background: ${(props) =>
+      props.isSelected
+        ? 'linear-gradient(to right, rgba(37, 109, 90, 0.28), rgba(37, 109, 90, 0.12))'
+        : 'linear-gradient(to right, rgba(138, 160, 184, 0.24), rgba(138, 160, 184, 0.06))'};
   }
 `;
 
@@ -357,9 +416,13 @@ interface TimelineGridProps {
   song: Song;
   measuresPerRow: number;
   selectedMelodyNoteId: string | null;
+  selectedMeasureRange: MeasureRange;
+  canDuplicateMeasureRange: boolean;
   onBeatClick: (startBeat: number) => void;
   onChordDelete: (chordId: string) => void;
   onChordResize: (chordId: string, durationBeats: number) => void;
+  onMeasureRangeChange: (range: MeasureRange) => void;
+  onDuplicateMeasureRange: () => void;
   onMelodyCellClick: (startBeat: number, pitch: NoteName, octave: number) => void;
   onMelodyNoteSelect: (noteId: string) => void;
   onMelodyNoteDelete: (noteId: string) => void;
@@ -384,6 +447,30 @@ const formatPitch = ({ pitch, octave }: MelodyPitch) => `${pitch}${octave}`;
 const isSamePitch = (note: MelodyNote, pitch: MelodyPitch) =>
   note.pitch === pitch.pitch && note.octave === pitch.octave;
 
+const createMeasureRange = (firstMeasure: number, secondMeasure: number): MeasureRange => {
+  const startMeasure = Math.min(firstMeasure, secondMeasure);
+
+  return {
+    startMeasure,
+    measureCount: Math.abs(secondMeasure - firstMeasure) + 1,
+  };
+};
+
+const isMeasureInRange = (measureIndex: number, range: MeasureRange) =>
+  measureIndex >= range.startMeasure &&
+  measureIndex < range.startMeasure + range.measureCount;
+
+const formatMeasureRange = (range: MeasureRange) => {
+  const startMeasureLabel = range.startMeasure + 1;
+  const endMeasureLabel = range.startMeasure + range.measureCount;
+
+  if (range.measureCount === 1) {
+    return `${startMeasureLabel}小節目`;
+  }
+
+  return `${startMeasureLabel}-${endMeasureLabel}小節目`;
+};
+
 const createTimelineRows = (song: Song, measuresPerRow: number): TimelineRow[] => {
   const safeMeasuresPerRow = Math.max(1, Math.floor(measuresPerRow) || 4);
   const rowCount = Math.ceil(song.totalMeasures / safeMeasuresPerRow);
@@ -405,17 +492,23 @@ export function TimelineGrid({
   song,
   measuresPerRow,
   selectedMelodyNoteId,
+  selectedMeasureRange,
+  canDuplicateMeasureRange,
   onBeatClick,
   onChordDelete,
   onChordResize,
+  onMeasureRangeChange,
+  onDuplicateMeasureRange,
   onMelodyCellClick,
   onMelodyNoteSelect,
   onMelodyNoteDelete,
   onMelodyNoteResize,
 }: TimelineGridProps) {
+  const [dragStartMeasure, setDragStartMeasure] = useState<number | null>(null);
   const totalBeats = getTotalBeats(song);
   const measureWidth = song.timeSignature.beatsPerMeasure * BEAT_WIDTH;
   const rows = createTimelineRows(song, measuresPerRow);
+  const activeMeasureRange = normalizeMeasureRange(song, selectedMeasureRange);
   const visibleChords = sortChordEvents(song.chords).filter(
     (chord) => chord.startBeat >= 0 && chord.startBeat < totalBeats,
   );
@@ -429,6 +522,22 @@ export function TimelineGrid({
   const selectedMelodyMaxDuration =
     selectedMelodyNote ? getMelodyNoteMaxDurationBeats(song, selectedMelodyNote.id) : 1;
 
+  useEffect(() => {
+    if (dragStartMeasure === null) {
+      return undefined;
+    }
+
+    const stopDragging = () => setDragStartMeasure(null);
+
+    window.addEventListener('pointerup', stopDragging);
+    window.addEventListener('pointercancel', stopDragging);
+
+    return () => {
+      window.removeEventListener('pointerup', stopDragging);
+      window.removeEventListener('pointercancel', stopDragging);
+    };
+  }, [dragStartMeasure]);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!selectedMelodyNoteId || (event.key !== 'Delete' && event.key !== 'Backspace')) {
       return;
@@ -438,8 +547,44 @@ export function TimelineGrid({
     onMelodyNoteDelete(selectedMelodyNoteId);
   };
 
+  const handleMeasurePointerDown = (
+    measureIndex: number,
+    event: PointerEvent<HTMLButtonElement>,
+  ) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    if (event.shiftKey) {
+      onMeasureRangeChange(createMeasureRange(activeMeasureRange.startMeasure, measureIndex));
+      return;
+    }
+
+    setDragStartMeasure(measureIndex);
+    onMeasureRangeChange({ startMeasure: measureIndex, measureCount: 1 });
+  };
+
+  const handleMeasurePointerEnter = (measureIndex: number) => {
+    if (dragStartMeasure === null) {
+      return;
+    }
+
+    onMeasureRangeChange(createMeasureRange(dragStartMeasure, measureIndex));
+  };
+
   return (
     <TimelineContainer tabIndex={0} onKeyDown={handleKeyDown}>
+      <SelectionToolbar>
+        <SelectionSummary>小節選択: {formatMeasureRange(activeMeasureRange)}</SelectionSummary>
+        <DuplicateRangeButton
+          type="button"
+          title="選んだ小節を次の位置へ複製"
+          disabled={!canDuplicateMeasureRange}
+          onClick={onDuplicateMeasureRange}
+        >
+          次へ複製
+        </DuplicateRangeButton>
+      </SelectionToolbar>
       <TimelineScroller>
         <TimelineRows>
           {rows.map((row) => {
@@ -504,7 +649,17 @@ export function TimelineGrid({
                   }}
                 >
                   {measureIndexes.map((measureIndex) => (
-                    <MeasureGuide key={measureIndex}>{measureIndex + 1}</MeasureGuide>
+                    <MeasureGuide
+                      key={measureIndex}
+                      type="button"
+                      isSelected={isMeasureInRange(measureIndex, activeMeasureRange)}
+                      aria-label={`${measureIndex + 1}小節目を選択`}
+                      title={`${measureIndex + 1}小節目を選択`}
+                      onPointerDown={(event) => handleMeasurePointerDown(measureIndex, event)}
+                      onPointerEnter={() => handleMeasurePointerEnter(measureIndex)}
+                    >
+                      {measureIndex + 1}
+                    </MeasureGuide>
                   ))}
                 </MeasureGuideRow>
 

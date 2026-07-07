@@ -11,8 +11,11 @@ import {
   createEmptySong,
   deleteChordFromSong,
   deleteMelodyNoteFromSong,
+  duplicateMeasureRangeToNext,
   insertChordInSong,
   insertMelodyNoteInSong,
+  canDuplicateMeasureRangeToNext,
+  normalizeMeasureRange,
   parseTimeSignature,
   resizeChordInSong,
   resizeMelodyNoteInSong,
@@ -25,6 +28,7 @@ import {
 import type { SongPlaybackSynths } from '../services/playback';
 import { createMidiBlob, createMidiFileName } from '../services/midiExport';
 import { loadSong, saveSong } from '../services/songStorage';
+import type { MeasureRange } from '../domain/music/timeline';
 import type { NoteName } from '../domain/music/types';
 import type { Chord } from '../types/chord';
 import type { Song } from '../types/song';
@@ -60,6 +64,10 @@ function Editor() {
   const [synth, setSynth] = useState<SongPlaybackSynths | null>(null);
   const [measuresPerRow, setMeasuresPerRow] = useState(4);
   const [selectedMelodyNoteId, setSelectedMelodyNoteId] = useState<string | null>(null);
+  const [selectedMeasureRange, setSelectedMeasureRange] = useState<MeasureRange>({
+    startMeasure: 0,
+    measureCount: 1,
+  });
 
   useEffect(() => {
     const newSynth = createSongPlaybackSynths();
@@ -80,6 +88,12 @@ function Editor() {
       setSong(loadedSong);
     }
   }, [id]);
+
+  useEffect(() => {
+    setSelectedMeasureRange((prev) =>
+      normalizeMeasureRange({ totalMeasures: song.totalMeasures }, prev),
+    );
+  }, [song.totalMeasures]);
 
   const handleTimeSignatureChange = (timeSignatureValue: string) => {
     const nextTimeSignature = parseTimeSignature(timeSignatureValue);
@@ -134,6 +148,15 @@ function Editor() {
 
   const handleMelodyNoteResize = (noteId: string, durationBeats: number) => {
     setSong((prev) => resizeMelodyNoteInSong(prev, noteId, durationBeats));
+  };
+
+  const handleMeasureRangeChange = (range: MeasureRange) => {
+    setSelectedMeasureRange(normalizeMeasureRange(song, range));
+  };
+
+  const handleDuplicateMeasureRange = () => {
+    setSong((prev) => duplicateMeasureRangeToNext(prev, selectedMeasureRange));
+    setSelectedMelodyNoteId(null);
   };
 
   const playProgression = async () => {
@@ -197,9 +220,13 @@ function Editor() {
           song={song}
           measuresPerRow={measuresPerRow}
           selectedMelodyNoteId={selectedMelodyNoteId}
+          selectedMeasureRange={selectedMeasureRange}
+          canDuplicateMeasureRange={canDuplicateMeasureRangeToNext(song, selectedMeasureRange)}
           onBeatClick={handleBeatClick}
           onChordDelete={handleChordDelete}
           onChordResize={handleChordResize}
+          onMeasureRangeChange={handleMeasureRangeChange}
+          onDuplicateMeasureRange={handleDuplicateMeasureRange}
           onMelodyCellClick={handleMelodyCellClick}
           onMelodyNoteSelect={handleMelodyNoteSelect}
           onMelodyNoteDelete={handleMelodyNoteDelete}

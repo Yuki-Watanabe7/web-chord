@@ -26,6 +26,11 @@ export interface ChordGridMeasure {
   position: number;
 }
 
+export interface MeasureRange {
+  startMeasure: number;
+  measureCount: number;
+}
+
 export const createMusicId = (prefix: string) => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -62,6 +67,46 @@ export const formatTimeSignature = (timeSignature: TimeSignature) =>
 
 export const getTotalBeats = (song: Pick<Song, 'timeSignature' | 'totalMeasures'>) =>
   Math.max(0, song.totalMeasures * song.timeSignature.beatsPerMeasure);
+
+export const normalizeMeasureRange = (
+  song: Pick<Song, 'totalMeasures'>,
+  range: MeasureRange,
+): MeasureRange => {
+  const totalMeasures = Math.max(1, Math.floor(song.totalMeasures) || DEFAULT_TOTAL_MEASURES);
+  const startMeasure = Math.max(
+    0,
+    Math.min(Math.floor(range.startMeasure) || 0, totalMeasures - 1),
+  );
+  const measureCount = Math.max(
+    1,
+    Math.min(Math.floor(range.measureCount) || 1, totalMeasures - startMeasure),
+  );
+
+  return { startMeasure, measureCount };
+};
+
+const getMeasureRangeBeats = (
+  song: Pick<Song, 'timeSignature' | 'totalMeasures'>,
+  range: MeasureRange,
+) => {
+  const normalizedRange = normalizeMeasureRange(song, range);
+  const startBeat = normalizedRange.startMeasure * song.timeSignature.beatsPerMeasure;
+  const beatCount = normalizedRange.measureCount * song.timeSignature.beatsPerMeasure;
+
+  return {
+    ...normalizedRange,
+    startBeat,
+    endBeat: startBeat + beatCount,
+    beatCount,
+  };
+};
+
+export const canDuplicateMeasureRangeToNext = (song: Song, range: MeasureRange) => {
+  const totalBeats = getTotalBeats(song);
+  const source = getMeasureRangeBeats(song, range);
+
+  return source.beatCount > 0 && source.endBeat + source.beatCount <= totalBeats;
+};
 
 export const getChordEndBeat = (chord: Pick<ChordEvent, 'startBeat' | 'durationBeats'>) =>
   chord.startBeat + chord.durationBeats;
@@ -270,6 +315,145 @@ export const placeChordInSong = (
   return {
     ...song,
     chords: gridToChordEvents(nextGrid, song.timeSignature),
+  };
+};
+
+const isEventInBeatRange = (
+  event: Pick<ChordEvent | MelodyNote, 'startBeat' | 'durationBeats'>,
+  rangeStartBeat: number,
+  rangeEndBeat: number,
+) => event.startBeat < rangeEndBeat && event.startBeat + event.durationBeats > rangeStartBeat;
+
+const trimEventAtBeat = <T extends Pick<ChordEvent | MelodyNote, 'startBeat' | 'durationBeats'>>(
+  event: T,
+  endBeat: number,
+): T | null => {
+  const nextDuration = endBeat - event.startBeat;
+
+  if (nextDuration <= 0) {
+    return null;
+  }
+
+  return {
+    ...event,
+    durationBeats: nextDuration,
+  };
+};
+
+const duplicateChordRange = (
+  chords: ChordEvent[],
+  sourceStartBeat: number,
+  sourceEndBeat: number,
+  targetStartBeat: number,
+  targetEndBeat: number,
+) => {
+  const copiedChords = chords.flatMap((chord): ChordEvent[] => {
+    if (!isEventInBeatRange(chord, sourceStartBeat, sourceEndBeat)) {
+      return [];
+    }
+
+    const clippedStartBeat = Math.max(chord.startBeat, sourceStartBeat);
+    const clippedEndBeat = Math.min(getChordEndBeat(chord), sourceEndBeat);
+
+    if (clippedEndBeat <= clippedStartBeat) {
+      return [];
+    }
+
+    return [{
+      id: createMusicId('chord'),
+      root: chord.root,
+      quality: chord.quality,
+      startBeat: targetStartBeat + (clippedStartBeat - sourceStartBeat),
+      durationBeats: clippedEndBeat - clippedStartBeat,
+    }];
+  });
+
+  const preservedChords = chords.flatMap((chord): ChordEvent[] => {
+    if (!isEventInBeatRange(chord, targetStartBeat, targetEndBeat)) {
+      return [chord];
+    }
+
+    if (chord.startBeat < targetStartBeat) {
+      const trimmedChord = trimEventAtBeat(chord, targetStartBeat);
+      return trimmedChord ? [trimmedChord] : [];
+    }
+
+    return [];
+  });
+
+  return sortChordEvents([...preservedChords, ...copiedChords]);
+};
+
+const duplicateMelodyRange = (
+  notes: MelodyNote[],
+  sourceStartBeat: number,
+  sourceEndBeat: number,
+  targetStartBeat: number,
+  targetEndBeat: number,
+) => {
+  const copiedNotes = notes.flatMap((note): MelodyNote[] => {
+    if (!isEventInBeatRange(note, sourceStartBeat, sourceEndBeat)) {
+      return [];
+    }
+
+    const clippedStartBeat = Math.max(note.startBeat, sourceStartBeat);
+    const clippedEndBeat = Math.min(getMelodyNoteEndBeat(note), sourceEndBeat);
+
+    if (clippedEndBeat <= clippedStartBeat) {
+      return [];
+    }
+
+    return [{
+      id: createMusicId('melody'),
+      pitch: note.pitch,
+      octave: note.octave,
+      startBeat: targetStartBeat + (clippedStartBeat - sourceStartBeat),
+      durationBeats: clippedEndBeat - clippedStartBeat,
+      velocity: note.velocity,
+    }];
+  });
+
+  const preservedNotes = notes.flatMap((note): MelodyNote[] => {
+    if (!isEventInBeatRange(note, targetStartBeat, targetEndBeat)) {
+      return [note];
+    }
+
+    if (note.startBeat < targetStartBeat) {
+      const trimmedNote = trimEventAtBeat(note, targetStartBeat);
+      return trimmedNote ? [trimmedNote] : [];
+    }
+
+    return [];
+  });
+
+  return sortMelodyNotes([...preservedNotes, ...copiedNotes]);
+};
+
+export const duplicateMeasureRangeToNext = (song: Song, range: MeasureRange): Song => {
+  if (!canDuplicateMeasureRangeToNext(song, range)) {
+    return song;
+  }
+
+  const source = getMeasureRangeBeats(song, range);
+  const targetStartBeat = source.endBeat;
+  const targetEndBeat = targetStartBeat + source.beatCount;
+
+  return {
+    ...song,
+    chords: duplicateChordRange(
+      song.chords,
+      source.startBeat,
+      source.endBeat,
+      targetStartBeat,
+      targetEndBeat,
+    ),
+    melodyNotes: duplicateMelodyRange(
+      song.melodyNotes,
+      source.startBeat,
+      source.endBeat,
+      targetStartBeat,
+      targetEndBeat,
+    ),
   };
 };
 
