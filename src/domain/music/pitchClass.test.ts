@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NOTE_NAMES } from './types';
 import {
   areEnharmonicallyEquivalent,
+  extractLeadingNoteName,
   getEnharmonicNoteNames,
   legacyNoteNameToPitchClass,
   noteNameToPitchClass,
@@ -75,6 +76,20 @@ describe('getEnharmonicNoteNames', () => {
 
   it('returns only the natural name for white keys', () => {
     expect(getEnharmonicNoteNames(0)).toEqual(['C']);
+  });
+});
+
+describe('extractLeadingNoteName', () => {
+  it('extracts the leading note name and keeps the remaining text', () => {
+    expect(extractLeadingNoteName('Dbmaj7')).toEqual({ pitchClass: 1, rest: 'maj7' });
+    expect(extractLeadingNoteName('D♭maj7')).toEqual({ pitchClass: 1, rest: 'maj7' });
+    expect(extractLeadingNoteName('C#maj7')).toEqual({ pitchClass: 1, rest: 'maj7' });
+    expect(extractLeadingNoteName('C')).toEqual({ pitchClass: 0, rest: '' });
+  });
+
+  it('returns null when the text does not start with a note name', () => {
+    expect(extractLeadingNoteName('')).toBeNull();
+    expect(extractLeadingNoteName('not a note')).toBeNull();
   });
 });
 
