@@ -1,7 +1,7 @@
 import styled from '@emotion/styled';
 import { formatTimeSignature } from '../../domain/music/timeline';
 import { NOTE_NAMES } from '../../domain/music/chords';
-import type { SongKey, TimeSignature } from '../../domain/music/types';
+import type { ChordDisplayMode, SongKey, TimeSignature } from '../../domain/music/types';
 
 const ControlsContainer = styled.div`
   display: flex;
@@ -81,6 +81,10 @@ const SONG_KEY_MODE_OPTIONS = [
   { value: 'major', label: 'メジャー' },
   { value: 'minor', label: 'マイナー' },
 ] as const;
+const CHORD_DISPLAY_MODE_OPTIONS: ReadonlyArray<{ value: ChordDisplayMode; label: string }> = [
+  { value: 'symbol', label: 'コード名' },
+  { value: 'roman', label: 'ローマ数字' },
+];
 
 const KeyControl = styled.div`
   display: flex;
@@ -104,11 +108,13 @@ interface SongControlsProps {
   timeSignature: TimeSignature;
   measuresPerRow: number;
   songKey: SongKey;
+  chordDisplayMode: ChordDisplayMode;
   onTitleChange: (title: string) => void;
   onBpmChange: (bpm: number) => void;
   onTimeSignatureChange: (timeSignature: string) => void;
   onMeasuresPerRowChange: (measuresPerRow: number) => void;
   onKeyChange: (key: SongKey) => void;
+  onChordDisplayModeChange: (mode: ChordDisplayMode) => void;
 }
 
 export function SongControls({
@@ -117,11 +123,13 @@ export function SongControls({
   timeSignature,
   measuresPerRow,
   songKey,
+  chordDisplayMode,
   onTitleChange,
   onBpmChange,
   onTimeSignatureChange,
   onMeasuresPerRowChange,
   onKeyChange,
+  onChordDisplayModeChange,
 }: SongControlsProps) {
   return (
     <ControlsContainer>
@@ -184,6 +192,21 @@ export function SongControls({
           }
         >
           {SONG_KEY_MODE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </KeySelect>
+      </KeyControl>
+
+      <KeyControl>
+        <label>コード表示:</label>
+        <KeySelect
+          aria-label="コード表示形式"
+          value={chordDisplayMode}
+          onChange={(event) => onChordDisplayModeChange(event.target.value as ChordDisplayMode)}
+        >
+          {CHORD_DISPLAY_MODE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>

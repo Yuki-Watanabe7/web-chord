@@ -49,6 +49,12 @@ export interface SongKey {
   mode: SongKeyMode;
 }
 
+// UI-only preference for how chords are labeled (chord name vs. roman numeral
+// relative to the song's key). Not persisted as part of `Song`.
+export const CHORD_DISPLAY_MODES = ['symbol', 'roman'] as const;
+
+export type ChordDisplayMode = (typeof CHORD_DISPLAY_MODES)[number];
+
 export interface ChordEvent {
   id: string;
   root: NoteName;

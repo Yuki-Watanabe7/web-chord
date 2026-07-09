@@ -1,6 +1,7 @@
 import styled from '@emotion/styled';
 import { useEffect, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { formatSlashChordLabel, getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
+import { formatChordAsRomanNumeralLabel } from '../../domain/music/chordProgressionTemplates';
 import {
   normalizeMeasureRange,
   getChordEndBeat,
@@ -11,7 +12,7 @@ import {
   sortChordEvents,
   sortMelodyNotes,
 } from '../../domain/music/timeline';
-import type { ChordEvent, MelodyNote, NoteName, Song } from '../../domain/music/types';
+import type { ChordDisplayMode, ChordEvent, MelodyNote, NoteName, Song } from '../../domain/music/types';
 import type { MeasureRange } from '../../domain/music/timeline';
 
 const BEAT_WIDTH = 56;
@@ -429,6 +430,7 @@ const MelodyNoteText = styled.span`
 interface TimelineGridProps {
   song: Song;
   measuresPerRow: number;
+  chordDisplayMode: ChordDisplayMode;
   selectedMelodyNoteId: string | null;
   selectedMeasureRange: MeasureRange;
   canDuplicateMeasureRange: boolean;
@@ -521,6 +523,7 @@ const createTimelineRows = (song: Song, measuresPerRow: number): TimelineRow[] =
 export function TimelineGrid({
   song,
   measuresPerRow,
+  chordDisplayMode,
   selectedMelodyNoteId,
   selectedMeasureRange,
   canDuplicateMeasureRange,
@@ -749,8 +752,14 @@ export function TimelineGrid({
                     const displayDuration = getDisplayDuration(chord, totalBeats);
                     const maxDuration = getChordMaxDurationBeats(song, chord.id);
                     const isCompact = segmentDurationBeats === 1;
-                    const fullLabel = formatSlashChordLabel(`${chord.root} ${chord.quality}`, chord.bass);
-                    const compactLabel = formatSlashChordLabel(chord.root, chord.bass);
+                    const fullLabel =
+                      chordDisplayMode === 'roman'
+                        ? formatChordAsRomanNumeralLabel(chord.root, chord.quality, song.key, chord.bass)
+                        : formatSlashChordLabel(`${chord.root} ${chord.quality}`, chord.bass);
+                    const compactLabel =
+                      chordDisplayMode === 'roman'
+                        ? fullLabel
+                        : formatSlashChordLabel(chord.root, chord.bass);
 
                     return (
                       <ChordBlock
