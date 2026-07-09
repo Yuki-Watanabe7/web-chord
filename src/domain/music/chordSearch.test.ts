@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { chordMatchesQuery, normalizeChordQuery } from './chordSearch';
+import {
+  chordMatchesQuery,
+  chordMatchesQueryExactly,
+  normalizeChordQuery,
+  parseChordSearchQuery,
+} from './chordSearch';
 import { chords } from '../../data/chords';
 import type { ChordDefinition } from './types';
 
@@ -90,5 +95,51 @@ describe('chordMatchesQuery against the full chord list (no duplication)', () =>
 
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ root: 'C#', type: 'major7' });
+  });
+});
+
+describe('chordMatchesQueryExactly', () => {
+  it('matches a bare root as the major chord of that root', () => {
+    const cMajor: ChordDefinition = { root: 'C', type: 'major', notes: ['C', 'E', 'G'] };
+    const cMinor: ChordDefinition = { root: 'C', type: 'minor', notes: ['C', 'D#', 'G'] };
+
+    expect(chordMatchesQueryExactly(cMajor, 'C')).toBe(true);
+    expect(chordMatchesQueryExactly(cMinor, 'C')).toBe(false);
+  });
+
+  it('matches full shorthand exactly but not as a mere substring', () => {
+    expect(chordMatchesQueryExactly(cSharpMajor7, 'C#maj7')).toBe(true);
+    expect(chordMatchesQueryExactly(cSharpMajor7, 'C#maj')).toBe(false);
+  });
+
+  it('treats an empty query as matching nothing', () => {
+    expect(chordMatchesQueryExactly(cSharpMajor7, '')).toBe(false);
+  });
+});
+
+describe('parseChordSearchQuery', () => {
+  it('returns the whole query as the chord part when there is no slash', () => {
+    expect(parseChordSearchQuery('Cmaj7')).toEqual({
+      chordQuery: 'Cmaj7',
+      bass: null,
+      hasBassQuery: false,
+    });
+  });
+
+  it('splits a slash-chord query into the chord part and a resolved bass note', () => {
+    expect(parseChordSearchQuery('C/E')).toEqual({ chordQuery: 'C', bass: 'E', hasBassQuery: true });
+    expect(parseChordSearchQuery('D/F#')).toEqual({ chordQuery: 'D', bass: 'F#', hasBassQuery: true });
+  });
+
+  it('normalizes an enharmonic bass spelling to its canonical sharp form', () => {
+    expect(parseChordSearchQuery('C/Eb')).toEqual({ chordQuery: 'C', bass: 'D#', hasBassQuery: true });
+  });
+
+  it('leaves bass null when the text after the slash is not a valid note name', () => {
+    expect(parseChordSearchQuery('C/xyz')).toEqual({ chordQuery: 'C', bass: null, hasBassQuery: true });
+  });
+
+  it('reports no bass query when the slash has nothing after it', () => {
+    expect(parseChordSearchQuery('C/')).toEqual({ chordQuery: 'C', bass: null, hasBassQuery: false });
   });
 });
