@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import styled from '@emotion/styled';
 import { CHORD_QUALITIES } from '../../domain/music/chords';
+import { chordMatchesQuery } from '../../domain/music/chordSearch';
 import { chords } from '../../data/chords';
 import type { Chord } from '../../types/chord';
 import type { ChordQuality } from '../../domain/music/types';
@@ -18,34 +19,7 @@ const QUALITY_LABELS: Record<QualityFilter, string> = {
   minor7: 'minor7',
 };
 
-const QUALITY_ALIASES: Record<ChordQuality, string[]> = {
-  major: ['maj'],
-  minor: ['m', 'min'],
-  diminished: ['dim'],
-  augmented: ['aug'],
-  dominant7: ['7'],
-  major7: ['maj7'],
-  minor7: ['m7', 'min7'],
-};
-
 const qualityFilters: QualityFilter[] = ['all', ...CHORD_QUALITIES];
-
-const normalizeSearchText = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-
-const getSearchTextValues = (chord: Chord) =>
-  [
-    chord.root,
-    chord.type,
-    `${chord.root} ${chord.type}`,
-    chord.notes.join(' '),
-  ].map(normalizeSearchText);
-
-const getShorthandValues = (chord: Chord) => {
-  const root = chord.root.toLowerCase();
-  const aliases = QUALITY_ALIASES[chord.type].map((alias) => `${root}${alias}`);
-
-  return aliases.map(normalizeSearchText);
-};
 
 const PalettePanel = styled.aside`
   width: 300px;
@@ -129,19 +103,15 @@ export function ChordPalette({ selectedChord, onChordSelect }: ChordPaletteProps
   const [searchText, setSearchText] = useState('');
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>('all');
 
-  const normalizedSearchText = normalizeSearchText(searchText);
   const filteredChords = useMemo(
     () =>
       chords.filter((chord) => {
         const matchesQuality = qualityFilter === 'all' || chord.type === qualityFilter;
-        const matchesSearch =
-          normalizedSearchText.length === 0 ||
-          getSearchTextValues(chord).some((value) => value.includes(normalizedSearchText)) ||
-          getShorthandValues(chord).some((value) => value === normalizedSearchText);
+        const matchesSearch = chordMatchesQuery(chord, searchText);
 
         return matchesQuality && matchesSearch;
       }),
-    [normalizedSearchText, qualityFilter],
+    [searchText, qualityFilter],
   );
 
   return (

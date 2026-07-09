@@ -50,7 +50,36 @@ const NATURAL_PITCH_CLASS_BY_LETTER: Record<string, number> = {
   B: 11,
 };
 
-const NOTE_NAME_TEXT_PATTERN = /^([A-Ga-g])([#♯]|[b♭])?$/;
+const LEADING_NOTE_NAME_PATTERN = /^([A-Ga-g])([#♯]|[b♭])?/;
+
+/**
+ * Extracts a leading note name (e.g. "D♭", "C#", "Bb") from free-form text and
+ * returns its pitch class plus whatever text follows it. Lets callers such as
+ * chord search normalize an enharmonic root spelling (Db -> C#) while keeping
+ * a trailing quality shorthand (e.g. "maj7") intact. Returns null when the
+ * text doesn't start with a recognizable note name.
+ */
+export const extractLeadingNoteName = (
+  value: string,
+): { pitchClass: PitchClass; rest: string } | null => {
+  const match = LEADING_NOTE_NAME_PATTERN.exec(value);
+
+  if (!match) {
+    return null;
+  }
+
+  const [fullMatch, letter, accidental] = match;
+  const naturalPitchClass = NATURAL_PITCH_CLASS_BY_LETTER[letter.toUpperCase()];
+
+  const pitchClass =
+    accidental === '#' || accidental === '♯'
+      ? normalizePitchClass(naturalPitchClass + 1)
+      : accidental === 'b' || accidental === '♭'
+        ? normalizePitchClass(naturalPitchClass - 1)
+        : normalizePitchClass(naturalPitchClass);
+
+  return { pitchClass, rest: value.slice(fullMatch.length) };
+};
 
 /**
  * Parses free-form note-name text ("C#", "D♭", "Db", "c") into a pitch class.
@@ -59,24 +88,9 @@ const NOTE_NAME_TEXT_PATTERN = /^([A-Ga-g])([#♯]|[b♭])?$/;
  * that isn't a recognizable note name.
  */
 export const parseNoteNameToPitchClass = (value: string): PitchClass | null => {
-  const match = NOTE_NAME_TEXT_PATTERN.exec(value.trim());
+  const extracted = extractLeadingNoteName(value.trim());
 
-  if (!match) {
-    return null;
-  }
-
-  const [, letter, accidental] = match;
-  const naturalPitchClass = NATURAL_PITCH_CLASS_BY_LETTER[letter.toUpperCase()];
-
-  if (accidental === '#' || accidental === '♯') {
-    return normalizePitchClass(naturalPitchClass + 1);
-  }
-
-  if (accidental === 'b' || accidental === '♭') {
-    return normalizePitchClass(naturalPitchClass - 1);
-  }
-
-  return normalizePitchClass(naturalPitchClass);
+  return extracted && extracted.rest === '' ? extracted.pitchClass : null;
 };
 
 /** True when two note-name strings refer to the same pitch class (e.g. "C#" and "D♭"). */
