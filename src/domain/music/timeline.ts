@@ -1,10 +1,12 @@
 import { getChordNotes } from './chords';
+import { PITCH_CLASS_COUNT, noteNameToPitchClass, normalizePitchClass, pitchClassToNoteName } from './pitchClass';
 import type {
   ChordDefinition,
   ChordEvent,
   MelodyNote,
   NoteName,
   Song,
+  SongKey,
   TimeSignature,
 } from './types';
 
@@ -13,6 +15,10 @@ export const DEFAULT_BPM = 120;
 export const DEFAULT_TIME_SIGNATURE: TimeSignature = {
   beatsPerMeasure: 4,
   beatUnit: 4,
+};
+export const DEFAULT_SONG_KEY: SongKey = {
+  tonic: 'C',
+  mode: 'major',
 };
 
 export interface ChordGridBeat {
@@ -193,6 +199,7 @@ export const createEmptySong = (options: Partial<Song> = {}): Song => {
     bpm: options.bpm ?? DEFAULT_BPM,
     timeSignature: options.timeSignature ?? DEFAULT_TIME_SIGNATURE,
     totalMeasures: options.totalMeasures ?? DEFAULT_TOTAL_MEASURES,
+    key: options.key ?? DEFAULT_SONG_KEY,
     chords: options.chords ?? [],
     melodyNotes: options.melodyNotes ?? [],
     createdAt: options.createdAt ?? now,
@@ -327,6 +334,70 @@ export const changeSongTimeSignature = (song: Song, timeSignature: TimeSignature
   return {
     ...song,
     timeSignature,
+  };
+};
+
+const MIN_MELODY_OCTAVE = 0;
+const MAX_MELODY_OCTAVE = 8;
+
+export const transposeNoteName = (note: NoteName, semitones: number): NoteName =>
+  pitchClassToNoteName(normalizePitchClass(noteNameToPitchClass(note) + semitones));
+
+/**
+ * Signed shift (in [-6, 6]) from one tonic to another, chosen as the shortest
+ * path around the pitch-class circle rather than always going upward — e.g.
+ * C -> B transposes down a semitone instead of up eleven.
+ */
+export const getKeyTransposeSemitones = (fromTonic: NoteName, toTonic: NoteName): number => {
+  const upwardShift = normalizePitchClass(
+    noteNameToPitchClass(toTonic) - noteNameToPitchClass(fromTonic),
+  );
+
+  return upwardShift > 6 ? upwardShift - 12 : upwardShift;
+};
+
+export const transposeChordEvent = (chord: ChordEvent, semitones: number): ChordEvent => ({
+  ...chord,
+  root: transposeNoteName(chord.root, semitones),
+  bass: chord.bass ? transposeNoteName(chord.bass, semitones) : undefined,
+});
+
+export const transposeMelodyNote = (note: MelodyNote, semitones: number): MelodyNote => {
+  const octaveShift = Math.floor((noteNameToPitchClass(note.pitch) + semitones) / PITCH_CLASS_COUNT);
+
+  return {
+    ...note,
+    pitch: transposeNoteName(note.pitch, semitones),
+    octave: Math.max(MIN_MELODY_OCTAVE, Math.min(MAX_MELODY_OCTAVE, note.octave + octaveShift)),
+  };
+};
+
+export interface ChangeSongKeyOptions {
+  /**
+   * Whether to transpose existing chords and melody notes to follow the new
+   * tonic. Chords and melody are always transposed together (never chords
+   * only) so their harmonic relationship stays intact; when false, only the
+   * `key` label is updated and existing notes are left as-is.
+   */
+  transposeExisting?: boolean;
+}
+
+export const changeSongKey = (
+  song: Song,
+  nextKey: SongKey,
+  options: ChangeSongKeyOptions = {},
+): Song => {
+  const semitones = getKeyTransposeSemitones(song.key.tonic, nextKey.tonic);
+
+  if (!options.transposeExisting || semitones === 0) {
+    return { ...song, key: nextKey };
+  }
+
+  return {
+    ...song,
+    key: nextKey,
+    chords: song.chords.map((chord) => transposeChordEvent(chord, semitones)),
+    melodyNotes: song.melodyNotes.map((note) => transposeMelodyNote(note, semitones)),
   };
 };
 

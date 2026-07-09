@@ -1,5 +1,5 @@
-import { CHORD_QUALITIES, NOTE_NAMES } from './types';
-import type { ChordQuality, NoteName } from './types';
+import { CHORD_QUALITIES, NOTE_NAMES, SONG_KEY_MODES } from './types';
+import type { ChordQuality, NoteName, SongKeyMode } from './types';
 import { noteNameToPitchClass, normalizePitchClass, pitchClassToNoteName } from './pitchClass';
 
 export { CHORD_QUALITIES, NOTE_NAMES };
@@ -11,6 +11,9 @@ export const isNoteName = (value: unknown): value is NoteName => hasOwnValue(NOT
 
 export const isChordQuality = (value: unknown): value is ChordQuality =>
   hasOwnValue(CHORD_QUALITIES, value);
+
+export const isSongKeyMode = (value: unknown): value is SongKeyMode =>
+  hasOwnValue(SONG_KEY_MODES, value);
 
 // Semitone offsets from the root, expressed as pitch-class intervals rather than
 // display-name array positions, so chord math stays independent of note spelling.

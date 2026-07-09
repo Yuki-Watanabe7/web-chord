@@ -6,6 +6,7 @@ import { SongControls } from '../components/editor/SongControls';
 import { TimelineGrid } from '../components/editor/TimelineGrid';
 import { TransportControls } from '../components/editor/TransportControls';
 import {
+  changeSongKey,
   changeSongTimeSignature,
   canPasteMeasureRangeClipboard,
   copyMeasureRangeFromSong,
@@ -32,7 +33,7 @@ import type { SongPlaybackSynths } from '../services/playback';
 import { createMidiBlob, createMidiFileName } from '../services/midiExport';
 import { loadSong, saveSong } from '../services/songStorage';
 import type { MeasureRange, MeasureRangeClipboard } from '../domain/music/timeline';
-import type { NoteName } from '../domain/music/types';
+import type { NoteName, SongKey } from '../domain/music/types';
 import type { Chord } from '../types/chord';
 import type { Song } from '../types/song';
 
@@ -107,6 +108,21 @@ function Editor() {
   const handleTimeSignatureChange = (timeSignatureValue: string) => {
     const nextTimeSignature = parseTimeSignature(timeSignatureValue);
     setSong((prev) => changeSongTimeSignature(prev, nextTimeSignature));
+  };
+
+  const handleKeyChange = (nextKey: SongKey) => {
+    setSong((prev) => {
+      const hasExistingNotes = prev.chords.length > 0 || prev.melodyNotes.length > 0;
+      const shouldTranspose =
+        prev.key.tonic !== nextKey.tonic &&
+        hasExistingNotes &&
+        window.confirm(
+          'キーを変更します。既存のコードとメロディも新しいキーに移調しますか？\n' +
+            'OK: コード・メロディを移調する / キャンセル: キーの設定だけ変更する',
+        );
+
+      return changeSongKey(prev, nextKey, { transposeExisting: shouldTranspose });
+    });
   };
 
   const handleBeatClick = (startBeat: number) => {
@@ -237,10 +253,12 @@ function Editor() {
           bpm={song.bpm}
           timeSignature={song.timeSignature}
           measuresPerRow={measuresPerRow}
+          songKey={song.key}
           onTitleChange={(title) => setSong((prev) => ({ ...prev, title }))}
           onBpmChange={(bpm) => setSong((prev) => ({ ...prev, bpm }))}
           onTimeSignatureChange={handleTimeSignatureChange}
           onMeasuresPerRowChange={setMeasuresPerRow}
+          onKeyChange={handleKeyChange}
         />
         <TimelineGrid
           song={song}

@@ -1,6 +1,7 @@
-import { getChordNotes, isChordQuality, isNoteName } from './chords';
+import { getChordNotes, isChordQuality, isNoteName, isSongKeyMode } from './chords';
 import {
   DEFAULT_BPM,
+  DEFAULT_SONG_KEY,
   DEFAULT_TIME_SIGNATURE,
   DEFAULT_TOTAL_MEASURES,
   gridToChordEvents,
@@ -13,6 +14,7 @@ import type {
   MelodyNote,
   NoteName,
   Song,
+  SongKey,
   TimeSignature,
 } from './types';
 import type { ChordGridMeasure } from './timeline';
@@ -172,6 +174,17 @@ const normalizeMelodyNotes = (value: unknown): MelodyNote[] => {
   });
 };
 
+const normalizeSongKey = (value: unknown): SongKey => {
+  if (!isRecord(value)) {
+    return DEFAULT_SONG_KEY;
+  }
+
+  return {
+    tonic: isNoteName(value.tonic) ? value.tonic : DEFAULT_SONG_KEY.tonic,
+    mode: isSongKeyMode(value.mode) ? value.mode : DEFAULT_SONG_KEY.mode,
+  };
+};
+
 const hasEventModel = (record: Record<string, unknown>) =>
   Array.isArray(record.chords) && Array.isArray(record.melodyNotes);
 
@@ -202,6 +215,7 @@ export const normalizeSong = (value: unknown): Song | null => {
     bpm: asPositiveNumber(value.bpm, DEFAULT_BPM),
     timeSignature,
     totalMeasures,
+    key: normalizeSongKey(value.key),
     chords: hasEventModel(value)
       ? normalizeChordEvents(value.chords)
       : gridToChordEvents(legacyGrid, timeSignature),

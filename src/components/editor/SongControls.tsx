@@ -1,6 +1,7 @@
 import styled from '@emotion/styled';
 import { formatTimeSignature } from '../../domain/music/timeline';
-import type { TimeSignature } from '../../domain/music/types';
+import { NOTE_NAMES } from '../../domain/music/chords';
+import type { SongKey, TimeSignature } from '../../domain/music/types';
 
 const ControlsContainer = styled.div`
   display: flex;
@@ -76,16 +77,38 @@ const TitleInput = styled.input`
 
 const TIME_SIGNATURE_OPTIONS = ['2/4', '3/4', '4/4', '5/4', '6/8'] as const;
 const MEASURES_PER_ROW_OPTIONS = [1, 2, 4, 8, 16] as const;
+const SONG_KEY_MODE_OPTIONS = [
+  { value: 'major', label: 'メジャー' },
+  { value: 'minor', label: 'マイナー' },
+] as const;
+
+const KeyControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+`;
+
+const KeySelect = styled.select`
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+`;
 
 interface SongControlsProps {
   title: string;
   bpm: number;
   timeSignature: TimeSignature;
   measuresPerRow: number;
+  songKey: SongKey;
   onTitleChange: (title: string) => void;
   onBpmChange: (bpm: number) => void;
   onTimeSignatureChange: (timeSignature: string) => void;
   onMeasuresPerRowChange: (measuresPerRow: number) => void;
+  onKeyChange: (key: SongKey) => void;
 }
 
 export function SongControls({
@@ -93,10 +116,12 @@ export function SongControls({
   bpm,
   timeSignature,
   measuresPerRow,
+  songKey,
   onTitleChange,
   onBpmChange,
   onTimeSignatureChange,
   onMeasuresPerRowChange,
+  onKeyChange,
 }: SongControlsProps) {
   return (
     <ControlsContainer>
@@ -137,6 +162,34 @@ export function SongControls({
           ))}
         </TimeSignatureSelect>
       </TimeSignatureControl>
+
+      <KeyControl>
+        <label>キー:</label>
+        <KeySelect
+          value={songKey.tonic}
+          onChange={(event) =>
+            onKeyChange({ ...songKey, tonic: event.target.value as SongKey['tonic'] })
+          }
+        >
+          {NOTE_NAMES.map((tonic) => (
+            <option key={tonic} value={tonic}>
+              {tonic}
+            </option>
+          ))}
+        </KeySelect>
+        <KeySelect
+          value={songKey.mode}
+          onChange={(event) =>
+            onKeyChange({ ...songKey, mode: event.target.value as SongKey['mode'] })
+          }
+        >
+          {SONG_KEY_MODE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </KeySelect>
+      </KeyControl>
 
       <WrapControl>
         <label>折り返し:</label>
