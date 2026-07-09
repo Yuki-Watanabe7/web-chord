@@ -107,6 +107,8 @@ const timeSignatureEvent = (timeSignature: TimeSignature) => {
   ]);
 };
 
+const BASS_OCTAVE = 2;
+
 const noteNameToMidiNumber = (pitch: NoteName, octave: number) =>
   clamp((octave + 1) * 12 + NOTE_NAMES.indexOf(pitch), 0, 127);
 
@@ -123,6 +125,9 @@ const chordToMidiNumbers = (chord: ChordEvent) => {
     return clamp(noteNumber, 0, 127);
   });
 };
+
+const chordBassMidiNumber = (chord: ChordEvent) =>
+  chord.bass ? noteNameToMidiNumber(chord.bass, BASS_OCTAVE) : null;
 
 const createNoteEvents = (
   startTick: number,
@@ -162,8 +167,10 @@ const createChordTrackEvents = (song: Song): MidiEvent[] => {
       Math.min(getChordEndBeat(chord), totalBeats),
       song.timeSignature,
     );
+    const bassNote = chordBassMidiNumber(chord);
+    const notes = bassNote === null ? chordToMidiNumbers(chord) : [...chordToMidiNumbers(chord), bassNote];
 
-    return chordToMidiNumbers(chord).flatMap((note) =>
+    return notes.flatMap((note) =>
       createNoteEvents(startTick, endTick, ACCOMPANIMENT_CHANNEL, note, 72),
     );
   });

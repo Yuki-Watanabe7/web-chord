@@ -63,6 +63,7 @@ function Editor() {
   const navigate = useNavigate();
   const [song, setSong] = useState<Song>(() => createEmptySong({ id }));
   const [selectedChord, setSelectedChord] = useState<Chord | null>(null);
+  const [selectedBass, setSelectedBass] = useState<NoteName | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [synth, setSynth] = useState<SongPlaybackSynths | null>(null);
   const [measuresPerRow, setMeasuresPerRow] = useState(4);
@@ -113,7 +114,8 @@ function Editor() {
       return;
     }
 
-    setSong((prev) => insertChordInSong(prev, startBeat, selectedChord));
+    const chordToInsert = selectedBass ? { ...selectedChord, bass: selectedBass } : selectedChord;
+    setSong((prev) => insertChordInSong(prev, startBeat, chordToInsert));
   };
 
   const handleChordDelete = (chordId: string) => {
@@ -222,7 +224,12 @@ function Editor() {
 
   return (
     <AppContainer>
-      <ChordPalette selectedChord={selectedChord} onChordSelect={setSelectedChord} />
+      <ChordPalette
+        selectedChord={selectedChord}
+        selectedBass={selectedBass}
+        onChordSelect={setSelectedChord}
+        onBassChange={setSelectedBass}
+      />
 
       <ChordGrid>
         <SongControls

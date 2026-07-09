@@ -35,6 +35,7 @@ export interface MeasureRangeClipboardChord {
   relativeStartBeat: number;
   root: ChordEvent['root'];
   quality: ChordEvent['quality'];
+  bass?: ChordEvent['bass'];
   durationBeats: number;
 }
 
@@ -167,6 +168,7 @@ export const chordEventToChordDefinition = (chord: ChordEvent): ChordDefinition 
   root: chord.root,
   type: chord.quality,
   notes: getChordNotes(chord.root, chord.quality),
+  bass: chord.bass,
 });
 
 export const createEmptyGrid = (
@@ -217,6 +219,7 @@ export const gridToChordEvents = (
         id: createMusicId('chord'),
         root: beat.chord.root,
         quality: beat.chord.type,
+        bass: beat.chord.bass,
         startBeat: measurePosition * timeSignature.beatsPerMeasure + beatPosition,
         durationBeats,
       };
@@ -311,6 +314,7 @@ export const songToGrid = (song: Song): ChordGridMeasure[] => {
         root: chordEvent.root,
         type: chordEvent.quality,
         notes: getChordNotes(chordEvent.root, chordEvent.quality),
+        bass: chordEvent.bass,
       },
       duration: Math.max(1, chordEvent.durationBeats),
     };
@@ -382,6 +386,7 @@ const copyChordRange = (
     return [{
       root: chord.root,
       quality: chord.quality,
+      bass: chord.bass,
       relativeStartBeat: clippedStartBeat - sourceStartBeat,
       durationBeats: clippedEndBeat - clippedStartBeat,
     }];
@@ -487,6 +492,7 @@ const pasteChordRange = (
     id: createMusicId('chord'),
     root: chord.root,
     quality: chord.quality,
+    bass: chord.bass,
     startBeat: targetStartBeat + chord.relativeStartBeat,
     durationBeats: chord.durationBeats,
   }));
@@ -594,6 +600,7 @@ export const insertChordInSong = (
     id: createMusicId('chord'),
     root: chord.root,
     quality: chord.type,
+    bass: chord.bass,
     startBeat: nextStartBeat,
     durationBeats: Math.max(1, Math.floor(nextBoundary - nextStartBeat)),
   };

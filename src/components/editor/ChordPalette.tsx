@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import styled from '@emotion/styled';
-import { CHORD_QUALITIES } from '../../domain/music/chords';
+import { CHORD_QUALITIES, formatSlashChordLabel, NOTE_NAMES } from '../../domain/music/chords';
 import { chordMatchesQuery } from '../../domain/music/chordSearch';
 import { chords } from '../../data/chords';
 import type { Chord } from '../../types/chord';
-import type { ChordQuality } from '../../domain/music/types';
+import type { ChordQuality, NoteName } from '../../domain/music/types';
 
 type QualityFilter = ChordQuality | 'all';
 
@@ -39,6 +39,22 @@ const PalettePanel = styled.aside`
 const SearchInput = styled.input`
   width: 100%;
   padding: 8px 10px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  font: inherit;
+`;
+
+const BassRow = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #333;
+`;
+
+const BassSelect = styled.select`
+  flex: 1;
+  padding: 6px 8px;
   border: 1px solid #bbb;
   border-radius: 6px;
   font: inherit;
@@ -96,10 +112,17 @@ const EmptyState = styled.p`
 
 interface ChordPaletteProps {
   selectedChord: Chord | null;
+  selectedBass: NoteName | null;
   onChordSelect: (chord: Chord) => void;
+  onBassChange: (bass: NoteName | null) => void;
 }
 
-export function ChordPalette({ selectedChord, onChordSelect }: ChordPaletteProps) {
+export function ChordPalette({
+  selectedChord,
+  selectedBass,
+  onChordSelect,
+  onBassChange,
+}: ChordPaletteProps) {
   const [searchText, setSearchText] = useState('');
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>('all');
 
@@ -124,6 +147,25 @@ export function ChordPalette({ selectedChord, onChordSelect }: ChordPaletteProps
         onChange={(event) => setSearchText(event.target.value)}
       />
 
+      <BassRow>
+        ベース音（分数コード）
+        <BassSelect
+          aria-label="ベース音（分数コード）"
+          value={selectedBass ?? ''}
+          onChange={(event) => {
+            const value = event.target.value;
+            onBassChange(value === '' ? null : (value as NoteName));
+          }}
+        >
+          <option value="">なし</option>
+          {NOTE_NAMES.map((note) => (
+            <option key={note} value={note}>
+              {note}
+            </option>
+          ))}
+        </BassSelect>
+      </BassRow>
+
       <FilterGroup aria-label="コードの種類">
         {qualityFilters.map((quality) => (
           <QualityButton
@@ -145,7 +187,7 @@ export function ChordPalette({ selectedChord, onChordSelect }: ChordPaletteProps
             type="button"
             onClick={() => onChordSelect(chord)}
           >
-            {chord.root} {chord.type}
+            {formatSlashChordLabel(`${chord.root} ${chord.type}`, selectedBass ?? undefined)}
           </ChordButton>
         ))}
         {filteredChords.length === 0 && <EmptyState>見つかりません</EmptyState>}

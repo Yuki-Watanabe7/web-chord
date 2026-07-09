@@ -1,6 +1,6 @@
 import styled from '@emotion/styled';
 import { useEffect, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
+import { formatSlashChordLabel, getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
 import {
   normalizeMeasureRange,
   getChordEndBeat,
@@ -749,6 +749,8 @@ export function TimelineGrid({
                     const displayDuration = getDisplayDuration(chord, totalBeats);
                     const maxDuration = getChordMaxDurationBeats(song, chord.id);
                     const isCompact = segmentDurationBeats === 1;
+                    const fullLabel = formatSlashChordLabel(`${chord.root} ${chord.quality}`, chord.bass);
+                    const compactLabel = formatSlashChordLabel(chord.root, chord.bass);
 
                     return (
                       <ChordBlock
@@ -760,8 +762,8 @@ export function TimelineGrid({
                         }}
                       >
                         <ChordInfo>
-                          <ChordName title={`${chord.root} ${chord.quality}`}>
-                            {isCompact ? chord.root : `${chord.root} ${chord.quality}`}
+                          <ChordName title={fullLabel}>
+                            {isCompact ? compactLabel : fullLabel}
                           </ChordName>
                           {!isCompact && <ChordMeta>{displayDuration}拍</ChordMeta>}
                         </ChordInfo>
@@ -770,7 +772,7 @@ export function TimelineGrid({
                           <ChordActionButton
                             type="button"
                             title="1拍短く"
-                            aria-label={`${chord.root} ${chord.quality}を1拍短く`}
+                            aria-label={`${fullLabel}を1拍短く`}
                             disabled={chord.durationBeats <= 1}
                             onClick={() => onChordResize(chord.id, chord.durationBeats - 1)}
                           >
@@ -779,7 +781,7 @@ export function TimelineGrid({
                           <ChordActionButton
                             type="button"
                             title="1拍長く"
-                            aria-label={`${chord.root} ${chord.quality}を1拍長く`}
+                            aria-label={`${fullLabel}を1拍長く`}
                             disabled={chord.durationBeats >= maxDuration}
                             onClick={() => onChordResize(chord.id, chord.durationBeats + 1)}
                           >
@@ -788,7 +790,7 @@ export function TimelineGrid({
                           <ChordActionButton
                             type="button"
                             title="削除"
-                            aria-label={`${chord.root} ${chord.quality}を削除`}
+                            aria-label={`${fullLabel}を削除`}
                             onClick={() => onChordDelete(chord.id)}
                           >
                             x
