@@ -3,6 +3,7 @@ import { PITCH_CLASS_COUNT, noteNameToPitchClass, normalizePitchClass, pitchClas
 import type {
   ChordDefinition,
   ChordEvent,
+  ChordQuality,
   MelodyNote,
   NoteName,
   Song,
@@ -697,6 +698,64 @@ export const insertChordInSong = (
   return {
     ...song,
     chords: sortChordEvents([...preservedChords, insertedChord]),
+  };
+};
+
+export interface ChordProgressionEntry {
+  root: NoteName;
+  quality: ChordQuality;
+  bass?: NoteName;
+}
+
+/**
+ * Inserts a sequence of chords (e.g. a resolved progression template) starting
+ * at `startBeat`, each spanning `beatsPerChord` beats. Existing chords in the
+ * affected range are overwritten/trimmed the same way measure-range paste
+ * does; a progression that doesn't fully fit before the end of the song is
+ * truncated to however many whole chords do fit.
+ */
+export const insertChordProgressionInSong = (
+  song: Song,
+  startBeat: number,
+  chords: ChordProgressionEntry[],
+  beatsPerChord: number,
+): Song => {
+  const totalBeats = getTotalBeats(song);
+
+  if (totalBeats === 0 || chords.length === 0 || beatsPerChord <= 0) {
+    return song;
+  }
+
+  const clampedStartBeat = clampBeatPosition(startBeat, totalBeats);
+  const availableBeats = Math.max(0, totalBeats - clampedStartBeat);
+  const insertableChordCount = Math.min(chords.length, Math.floor(availableBeats / beatsPerChord));
+
+  if (insertableChordCount === 0) {
+    return song;
+  }
+
+  const targetEndBeat = clampedStartBeat + insertableChordCount * beatsPerChord;
+
+  const insertedChords: ChordEvent[] = chords
+    .slice(0, insertableChordCount)
+    .map((chord, index) => ({
+      id: createMusicId('chord'),
+      root: chord.root,
+      quality: chord.quality,
+      bass: chord.bass,
+      startBeat: clampedStartBeat + index * beatsPerChord,
+      durationBeats: beatsPerChord,
+    }));
+
+  const preservedChords = preserveEventsOutsidePasteRange(
+    song.chords,
+    clampedStartBeat,
+    targetEndBeat,
+  );
+
+  return {
+    ...song,
+    chords: sortChordEvents([...preservedChords, ...insertedChords]),
   };
 };
 

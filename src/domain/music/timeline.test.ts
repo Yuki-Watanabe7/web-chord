@@ -7,6 +7,7 @@ import {
   duplicateMeasureRangeToNext,
   getKeyTransposeSemitones,
   insertChordInSong,
+  insertChordProgressionInSong,
   insertMelodyNoteInSong,
   pasteMeasureRangeClipboard,
   transposeChordEvent,
@@ -146,5 +147,65 @@ describe('changeSongKey', () => {
 
     expect(changed.key).toEqual({ tonic: 'C', mode: 'minor' });
     expect(changed.chords[0]).toMatchObject({ root: 'C', bass: 'E' });
+  });
+});
+
+describe('insertChordProgressionInSong', () => {
+  const progression = [
+    { root: 'C', quality: 'major' },
+    { root: 'G', quality: 'major' },
+    { root: 'A', quality: 'minor' },
+    { root: 'F', quality: 'major' },
+  ] as const;
+
+  it('lays out each chord back-to-back starting at the given beat', () => {
+    const song = createEmptySong({ totalMeasures: 4, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const next = insertChordProgressionInSong(song, 0, [...progression], 4);
+
+    expect(next.chords).toHaveLength(4);
+    expect(next.chords.map((chord) => ({ root: chord.root, quality: chord.quality, startBeat: chord.startBeat, durationBeats: chord.durationBeats }))).toEqual([
+      { root: 'C', quality: 'major', startBeat: 0, durationBeats: 4 },
+      { root: 'G', quality: 'major', startBeat: 4, durationBeats: 4 },
+      { root: 'A', quality: 'minor', startBeat: 8, durationBeats: 4 },
+      { root: 'F', quality: 'major', startBeat: 12, durationBeats: 4 },
+    ]);
+  });
+
+  it('respects a smaller per-chord beat length', () => {
+    const song = createEmptySong({ totalMeasures: 4, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const next = insertChordProgressionInSong(song, 0, [...progression], 2);
+
+    expect(next.chords.map((chord) => chord.startBeat)).toEqual([0, 2, 4, 6]);
+    expect(next.chords.every((chord) => chord.durationBeats === 2)).toBe(true);
+  });
+
+  it('overwrites and trims existing chords within the inserted range', () => {
+    const withExisting = insertChordInSong(
+      createEmptySong({ totalMeasures: 4, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } }),
+      2,
+      { root: 'D', type: 'major', notes: ['D', 'F#', 'A'] },
+    );
+
+    const next = insertChordProgressionInSong(withExisting, 0, [...progression], 4);
+
+    expect(next.chords).toHaveLength(4);
+    expect(next.chords[0]).toMatchObject({ root: 'C', startBeat: 0, durationBeats: 4 });
+  });
+
+  it('truncates the progression when it does not fully fit before the end of the song', () => {
+    const song = createEmptySong({ totalMeasures: 1, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const next = insertChordProgressionInSong(song, 0, [...progression], 2);
+
+    expect(next.chords.map((chord) => ({ root: chord.root, startBeat: chord.startBeat }))).toEqual([
+      { root: 'C', startBeat: 0 },
+      { root: 'G', startBeat: 2 },
+    ]);
+  });
+
+  it('does nothing when the song has no beats', () => {
+    const song = createEmptySong({ totalMeasures: 0 });
+    const next = insertChordProgressionInSong(song, 0, [...progression], 4);
+
+    expect(next).toBe(song);
   });
 });

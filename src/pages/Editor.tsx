@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import styled from '@emotion/styled';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChordPalette } from '../components/editor/ChordPalette';
+import { ChordProgressionTemplates } from '../components/editor/ChordProgressionTemplates';
 import { SongControls } from '../components/editor/SongControls';
 import { TimelineGrid } from '../components/editor/TimelineGrid';
 import { TransportControls } from '../components/editor/TransportControls';
+import type { ResolvedTemplateChord } from '../domain/music/chordProgressionTemplates';
 import {
   changeSongKey,
   changeSongTimeSignature,
@@ -16,6 +18,7 @@ import {
   deleteMelodyNoteFromSong,
   duplicateMeasureRangeToNext,
   insertChordInSong,
+  insertChordProgressionInSong,
   insertMelodyNoteInSong,
   canDuplicateMeasureRangeToNext,
   normalizeMeasureRange,
@@ -132,6 +135,14 @@ function Editor() {
 
     const chordToInsert = selectedBass ? { ...selectedChord, bass: selectedBass } : selectedChord;
     setSong((prev) => insertChordInSong(prev, startBeat, chordToInsert));
+  };
+
+  const handleInsertChordProgressionTemplate = (
+    chords: ResolvedTemplateChord[],
+    beatsPerChord: number,
+  ) => {
+    const startBeat = selectedMeasureRange.startMeasure * song.timeSignature.beatsPerMeasure;
+    setSong((prev) => insertChordProgressionInSong(prev, startBeat, chords, beatsPerChord));
   };
 
   const handleChordDelete = (chordId: string) => {
@@ -259,6 +270,11 @@ function Editor() {
           onTimeSignatureChange={handleTimeSignatureChange}
           onMeasuresPerRowChange={setMeasuresPerRow}
           onKeyChange={handleKeyChange}
+        />
+        <ChordProgressionTemplates
+          songKey={song.key}
+          timeSignature={song.timeSignature}
+          onInsert={handleInsertChordProgressionTemplate}
         />
         <TimelineGrid
           song={song}
