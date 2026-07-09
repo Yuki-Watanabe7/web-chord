@@ -57,3 +57,69 @@ describe('normalizeSong (slash chords)', () => {
     expect(song?.chords[0].bass).toBeUndefined();
   });
 });
+
+describe('normalizeSong (song key)', () => {
+  it('defaults to C major for songs saved before the key field existed', () => {
+    const song = normalizeSong({
+      id: 'song-1',
+      title: 'テスト',
+      bpm: 120,
+      timeSignature: { beatsPerMeasure: 4, beatUnit: 4 },
+      totalMeasures: 4,
+      chords: [],
+      melodyNotes: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(song?.key).toEqual({ tonic: 'C', mode: 'major' });
+  });
+
+  it('keeps a valid saved key', () => {
+    const song = normalizeSong({
+      id: 'song-1',
+      title: 'テスト',
+      bpm: 120,
+      timeSignature: { beatsPerMeasure: 4, beatUnit: 4 },
+      totalMeasures: 4,
+      key: { tonic: 'A', mode: 'minor' },
+      chords: [],
+      melodyNotes: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(song?.key).toEqual({ tonic: 'A', mode: 'minor' });
+  });
+
+  it('falls back to defaults for invalid tonic/mode values instead of failing', () => {
+    const song = normalizeSong({
+      id: 'song-1',
+      title: 'テスト',
+      bpm: 120,
+      timeSignature: { beatsPerMeasure: 4, beatUnit: 4 },
+      totalMeasures: 4,
+      key: { tonic: 'H', mode: 'dorian' },
+      chords: [],
+      melodyNotes: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(song?.key).toEqual({ tonic: 'C', mode: 'major' });
+  });
+
+  it('normalizes legacy grid-based songs (no key field at all) to the default key', () => {
+    const song = normalizeSong({
+      id: 'song-1',
+      title: 'テスト',
+      bpm: 120,
+      timeSignature: '4/4',
+      grid: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(song?.key).toEqual({ tonic: 'C', mode: 'major' });
+  });
+});

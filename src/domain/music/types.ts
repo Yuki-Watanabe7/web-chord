@@ -40,6 +40,15 @@ export interface TimeSignature {
   beatUnit: number;
 }
 
+export const SONG_KEY_MODES = ['major', 'minor'] as const;
+
+export type SongKeyMode = (typeof SONG_KEY_MODES)[number];
+
+export interface SongKey {
+  tonic: NoteName;
+  mode: SongKeyMode;
+}
+
 export interface ChordEvent {
   id: string;
   root: NoteName;
@@ -65,6 +74,7 @@ export interface Song {
   bpm: number;
   timeSignature: TimeSignature;
   totalMeasures: number;
+  key: SongKey;
   chords: ChordEvent[];
   melodyNotes: MelodyNote[];
   createdAt: string;
