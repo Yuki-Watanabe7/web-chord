@@ -28,6 +28,7 @@ run_step() {
 
 run_step "lint" npm run lint
 run_step "build" npm run build
+run_step "test" npm run test
 
 echo ""
 if [ -n "${failed}" ]; then

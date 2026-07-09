@@ -1,5 +1,6 @@
 import { CHORD_QUALITIES, NOTE_NAMES } from './types';
 import type { ChordQuality, NoteName } from './types';
+import { noteNameToPitchClass, normalizePitchClass, pitchClassToNoteName } from './pitchClass';
 
 export { CHORD_QUALITIES, NOTE_NAMES };
 
@@ -11,35 +12,22 @@ export const isNoteName = (value: unknown): value is NoteName => hasOwnValue(NOT
 export const isChordQuality = (value: unknown): value is ChordQuality =>
   hasOwnValue(CHORD_QUALITIES, value);
 
+// Semitone offsets from the root, expressed as pitch-class intervals rather than
+// display-name array positions, so chord math stays independent of note spelling.
+const CHORD_INTERVALS: Record<ChordQuality, readonly number[]> = {
+  major: [0, 4, 7],
+  minor: [0, 3, 7],
+  diminished: [0, 3, 6],
+  augmented: [0, 4, 8],
+  dominant7: [0, 4, 7, 10],
+  major7: [0, 4, 7, 11],
+  minor7: [0, 3, 7, 10],
+};
+
 export const getChordNotes = (root: NoteName, quality: ChordQuality): NoteName[] => {
-  const rootIndex = NOTE_NAMES.indexOf(root);
-  const notes: NoteName[] = [root];
+  const rootPitchClass = noteNameToPitchClass(root);
 
-  const noteAt = (semitones: number) => NOTE_NAMES[(rootIndex + semitones) % NOTE_NAMES.length];
-
-  switch (quality) {
-    case 'major':
-      notes.push(noteAt(4), noteAt(7));
-      break;
-    case 'minor':
-      notes.push(noteAt(3), noteAt(7));
-      break;
-    case 'diminished':
-      notes.push(noteAt(3), noteAt(6));
-      break;
-    case 'augmented':
-      notes.push(noteAt(4), noteAt(8));
-      break;
-    case 'dominant7':
-      notes.push(noteAt(4), noteAt(7), noteAt(10));
-      break;
-    case 'major7':
-      notes.push(noteAt(4), noteAt(7), noteAt(11));
-      break;
-    case 'minor7':
-      notes.push(noteAt(3), noteAt(7), noteAt(10));
-      break;
-  }
-
-  return notes;
+  return CHORD_INTERVALS[quality].map((interval) =>
+    pitchClassToNoteName(normalizePitchClass(rootPitchClass + interval)),
+  );
 };
