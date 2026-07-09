@@ -31,6 +31,8 @@ export interface ChordDefinition {
   root: NoteName;
   type: ChordQuality;
   notes: NoteName[];
+  /** Optional slash-chord bass note (e.g. the `E` in `C/E`). Undefined means root-position. */
+  bass?: NoteName;
 }
 
 export interface TimeSignature {
@@ -42,6 +44,8 @@ export interface ChordEvent {
   id: string;
   root: NoteName;
   quality: ChordQuality;
+  /** Optional slash-chord bass note (e.g. the `E` in `C/E`). Undefined means root-position. */
+  bass?: NoteName;
   startBeat: number;
   durationBeats: number;
 }

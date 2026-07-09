@@ -28,6 +28,13 @@ const getBeatDurationMs = (bpm: number) => (60 / Math.max(1, bpm)) * 1000;
 const getNoteName = (note: Pick<MelodyNote, 'pitch' | 'octave'>) =>
   `${note.pitch}${note.octave}`;
 
+const BASS_OCTAVE = 2;
+
+const getChordPlaybackNotes = (chord: Pick<ChordDefinition, 'notes' | 'bass'>) => [
+  ...chord.notes.map((note) => `${note}4`),
+  ...(chord.bass ? [`${chord.bass}${BASS_OCTAVE}`] : []),
+];
+
 export const createChordPlaybackSynth = (): ChordPlaybackSynth =>
   new Tone.PolySynth(Tone.Synth).toDestination();
 
@@ -60,7 +67,7 @@ export const playChord = async (
 ) => {
   await Tone.start();
 
-  const notes = chord.notes.map((note) => `${note}4`);
+  const notes = getChordPlaybackNotes(chord);
 
   synth.releaseAll();
   synth.triggerAttack(notes);
@@ -134,7 +141,7 @@ export const playSong = async (song: Song, synths: SongPlaybackSynths) => {
         endMs: (chord.startBeat + durationBeats) * beatDurationMs,
         play: () => {
           synths.chords.triggerAttackRelease(
-            chordDefinition.notes.map((note) => `${note}4`),
+            getChordPlaybackNotes(chordDefinition),
             durationBeats * (beatDurationMs / 1000),
             undefined,
             0.58,

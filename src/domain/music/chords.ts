@@ -31,3 +31,7 @@ export const getChordNotes = (root: NoteName, quality: ChordQuality): NoteName[]
     pitchClassToNoteName(normalizePitchClass(rootPitchClass + interval)),
   );
 };
+
+/** Appends a slash-chord bass note to a chord label, e.g. `formatSlashChordLabel('C major', 'E')` -> `C major/E`. */
+export const formatSlashChordLabel = (label: string, bass?: NoteName): string =>
+  bass ? `${label}/${bass}` : label;

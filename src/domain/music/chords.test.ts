@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getChordNotes, isChordQuality, isNoteName } from './chords';
+import { formatSlashChordLabel, getChordNotes, isChordQuality, isNoteName } from './chords';
 
 describe('getChordNotes', () => {
   it('builds triads and sevenths from C (regression: matches pre-pitch-class output)', () => {
@@ -26,5 +26,15 @@ describe('isNoteName / isChordQuality', () => {
 
     expect(isChordQuality('major7')).toBe(true);
     expect(isChordQuality('power')).toBe(false);
+  });
+});
+
+describe('formatSlashChordLabel', () => {
+  it('appends the bass note when present', () => {
+    expect(formatSlashChordLabel('C major', 'E')).toBe('C major/E');
+  });
+
+  it('returns the label unchanged when there is no bass note', () => {
+    expect(formatSlashChordLabel('C major', undefined)).toBe('C major');
   });
 });

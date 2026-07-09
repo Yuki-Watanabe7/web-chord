@@ -61,6 +61,8 @@ const asNonNegativeNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : fallback;
 };
 
+const normalizeBass = (value: unknown): NoteName | undefined => (isNoteName(value) ? value : undefined);
+
 const normalizeChordDefinition = (value: unknown): ChordDefinition | null => {
   if (!isRecord(value)) {
     return null;
@@ -77,6 +79,7 @@ const normalizeChordDefinition = (value: unknown): ChordDefinition | null => {
     root,
     type: quality,
     notes: getChordNotes(root, quality),
+    bass: normalizeBass(value.bass),
   };
 };
 
@@ -135,6 +138,7 @@ const normalizeChordEvents = (value: unknown): ChordEvent[] => {
       id: asString(event.id, createId('chord')),
       root,
       quality,
+      bass: normalizeBass(event.bass),
       startBeat: asNonNegativeNumber(event.startBeat, 0),
       durationBeats: asPositiveNumber(event.durationBeats, 1),
     }];
