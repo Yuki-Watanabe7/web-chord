@@ -1,8 +1,14 @@
-import type { ChordDefinition, ChordQuality } from './types';
-import { extractLeadingNoteName, pitchClassToNoteName } from './pitchClass';
+import type { ChordDefinition, ChordQuality, NoteName } from './types';
+import {
+  extractLeadingNoteName,
+  parseNoteNameToPitchClass,
+  pitchClassToNoteName,
+} from './pitchClass';
 
-const QUALITY_ALIASES: Record<ChordQuality, string[]> = {
-  major: ['maj'],
+// The first alias per quality doubles as the compact label shown on quality-selector
+// buttons, so it should read as a chord-symbol suffix (e.g. "maj", "m", "dim").
+export const QUALITY_ALIASES: Record<ChordQuality, string[]> = {
+  major: ['maj', ''],
   minor: ['m', 'min'],
   diminished: ['dim'],
   augmented: ['aug'],
@@ -54,4 +60,47 @@ export const chordMatchesQuery = (chord: ChordDefinition, query: string): boolea
     getSearchTextValues(chord).some((value) => value.includes(normalizedQuery)) ||
     getShorthandValues(chord).some((value) => value === normalizedQuery)
   );
+};
+
+/** True when a chord's shorthand (e.g. "c#maj7") is an exact match for the query, not just a substring. */
+export const chordMatchesQueryExactly = (chord: ChordDefinition, query: string): boolean => {
+  const normalizedQuery = normalizeChordQuery(query);
+
+  if (normalizedQuery.length === 0) {
+    return false;
+  }
+
+  return getShorthandValues(chord).some((value) => value === normalizedQuery);
+};
+
+export interface ParsedChordSearchQuery {
+  /** The part of the query before an optional "/bass" suffix, e.g. "Cmaj7" from "Cmaj7/E". */
+  chordQuery: string;
+  /** Resolved bass note when the query contains a recognizable "/<note>" suffix. */
+  bass: NoteName | null;
+  /** True when a "/..." suffix was typed at all, even if it didn't resolve to a valid note name. */
+  hasBassQuery: boolean;
+}
+
+/**
+ * Splits a free-form chord search query (e.g. "C/E", "F#m7/A#") into the chord
+ * portion and an optional slash-chord bass note, so search and direct-entry
+ * selection can support the same slash-chord notation used elsewhere in the app.
+ */
+export const parseChordSearchQuery = (query: string): ParsedChordSearchQuery => {
+  const slashIndex = query.indexOf('/');
+
+  if (slashIndex === -1) {
+    return { chordQuery: query, bass: null, hasBassQuery: false };
+  }
+
+  const chordQuery = query.slice(0, slashIndex);
+  const bassText = query.slice(slashIndex + 1).trim();
+  const bassPitchClass = parseNoteNameToPitchClass(bassText);
+
+  return {
+    chordQuery,
+    bass: bassPitchClass !== null ? pitchClassToNoteName(bassPitchClass) : null,
+    hasBassQuery: bassText.length > 0,
+  };
 };

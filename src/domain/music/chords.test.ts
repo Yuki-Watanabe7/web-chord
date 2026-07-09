@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatSlashChordLabel, getChordNotes, isChordQuality, isNoteName } from './chords';
+import {
+  formatChordSymbol,
+  formatSlashChordLabel,
+  getChordNotes,
+  isChordQuality,
+  isNoteName,
+} from './chords';
 
 describe('getChordNotes', () => {
   it('builds triads and sevenths from C (regression: matches pre-pitch-class output)', () => {
@@ -36,5 +42,22 @@ describe('formatSlashChordLabel', () => {
 
   it('returns the label unchanged when there is no bass note', () => {
     expect(formatSlashChordLabel('C major', undefined)).toBe('C major');
+  });
+});
+
+describe('formatChordSymbol', () => {
+  it('formats each quality as a compact chord-symbol suffix', () => {
+    expect(formatChordSymbol('C', 'major')).toBe('C');
+    expect(formatChordSymbol('C', 'minor')).toBe('Cm');
+    expect(formatChordSymbol('C', 'diminished')).toBe('Cdim');
+    expect(formatChordSymbol('C', 'augmented')).toBe('Caug');
+    expect(formatChordSymbol('C', 'dominant7')).toBe('C7');
+    expect(formatChordSymbol('C', 'major7')).toBe('Cmaj7');
+    expect(formatChordSymbol('F#', 'minor7')).toBe('F#m7');
+  });
+
+  it('appends a bass note as a slash chord', () => {
+    expect(formatChordSymbol('C', 'major', 'E')).toBe('C/E');
+    expect(formatChordSymbol('D', 'major', 'F#')).toBe('D/F#');
   });
 });

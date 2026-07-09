@@ -35,3 +35,19 @@ export const getChordNotes = (root: NoteName, quality: ChordQuality): NoteName[]
 /** Appends a slash-chord bass note to a chord label, e.g. `formatSlashChordLabel('C major', 'E')` -> `C major/E`. */
 export const formatSlashChordLabel = (label: string, bass?: NoteName): string =>
   bass ? `${label}/${bass}` : label;
+
+// Compact chord-symbol suffixes (e.g. "C", "Am7", "F#m7") rather than the
+// verbose domain quality names, matching the shorthand musicians type/read.
+const QUALITY_SYMBOLS: Record<ChordQuality, string> = {
+  major: '',
+  minor: 'm',
+  diminished: 'dim',
+  augmented: 'aug',
+  dominant7: '7',
+  major7: 'maj7',
+  minor7: 'm7',
+};
+
+/** Formats a chord as a compact symbol, e.g. `formatChordSymbol('C', 'minor7', 'E')` -> `Cm7/E`. */
+export const formatChordSymbol = (root: NoteName, quality: ChordQuality, bass?: NoteName): string =>
+  formatSlashChordLabel(`${root}${QUALITY_SYMBOLS[quality]}`, bass);

@@ -1,25 +1,37 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import styled from '@emotion/styled';
-import { CHORD_QUALITIES, formatSlashChordLabel, NOTE_NAMES } from '../../domain/music/chords';
-import { chordMatchesQuery } from '../../domain/music/chordSearch';
+import {
+  CHORD_QUALITIES,
+  formatChordSymbol,
+  getChordNotes,
+  NOTE_NAMES,
+} from '../../domain/music/chords';
+import {
+  chordMatchesQuery,
+  chordMatchesQueryExactly,
+  parseChordSearchQuery,
+  QUALITY_ALIASES,
+} from '../../domain/music/chordSearch';
 import { chords } from '../../data/chords';
+import { addRecentChord, loadRecentChords } from '../../services/recentChordsStorage';
+import type { RecentChordEntry } from '../../services/recentChordsStorage';
 import type { Chord } from '../../types/chord';
 import type { ChordQuality, NoteName } from '../../domain/music/types';
 
-type QualityFilter = ChordQuality | 'all';
+const MAX_SEARCH_RESULTS = 8;
 
-const QUALITY_LABELS: Record<QualityFilter, string> = {
-  all: 'すべて',
-  major: 'major',
-  minor: 'minor',
-  diminished: 'diminished',
-  augmented: 'augmented',
-  dominant7: 'dominant7',
-  major7: 'major7',
-  minor7: 'minor7',
+const QUALITY_LABELS: Record<ChordQuality, string> = {
+  major: QUALITY_ALIASES.major[0],
+  minor: QUALITY_ALIASES.minor[0],
+  diminished: QUALITY_ALIASES.diminished[0],
+  augmented: QUALITY_ALIASES.augmented[0],
+  dominant7: QUALITY_ALIASES.dominant7[0],
+  major7: QUALITY_ALIASES.major7[0],
+  minor7: QUALITY_ALIASES.minor7[0],
 };
 
-const qualityFilters: QualityFilter[] = ['all', ...CHORD_QUALITIES];
+const recentChordKey = (entry: RecentChordEntry): string =>
+  `${entry.root}-${entry.quality}-${entry.bass ?? ''}`;
 
 const PalettePanel = styled.aside`
   width: 300px;
@@ -28,12 +40,48 @@ const PalettePanel = styled.aside`
   padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 
   @media (max-width: 900px) {
     width: 100%;
-    max-height: 220px;
+    max-height: 60vh;
+    overflow-y: auto;
   }
+`;
+
+const SectionLabel = styled.p`
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: #666;
+`;
+
+const ChipRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+`;
+
+const ChordChip = styled('button', {
+  shouldForwardProp: (prop) => prop !== 'isActive',
+})<{ isActive: boolean }>`
+  padding: 6px 10px;
+  border: 1px solid ${(props) => (props.isActive ? '#315f52' : '#ccc')};
+  border-radius: 999px;
+  background: ${(props) => (props.isActive ? '#e5f4ef' : 'white')};
+  color: #333;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+
+  &:hover {
+    background: #f0f0f0;
+  }
+`;
+
+const SearchForm = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 `;
 
 const SearchInput = styled.input`
@@ -60,6 +108,29 @@ const BassSelect = styled.select`
   font: inherit;
 `;
 
+const RootGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+`;
+
+const RootButton = styled('button', {
+  shouldForwardProp: (prop) => prop !== 'isActive',
+})<{ isActive: boolean }>`
+  padding: 10px 4px;
+  border: 1px solid ${(props) => (props.isActive ? '#315f52' : '#ccc')};
+  border-radius: 6px;
+  background: ${(props) => (props.isActive ? '#e5f4ef' : 'white')};
+  color: #333;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+
+  &:hover {
+    background: #f0f0f0;
+  }
+`;
+
 const FilterGroup = styled.div`
   display: flex;
   flex-wrap: wrap;
@@ -69,7 +140,7 @@ const FilterGroup = styled.div`
 const QualityButton = styled('button', {
   shouldForwardProp: (prop) => prop !== 'isActive',
 })<{ isActive: boolean }>`
-  padding: 5px 8px;
+  padding: 6px 10px;
   border: 1px solid ${(props) => (props.isActive ? '#315f52' : '#ccc')};
   border-radius: 999px;
   background: ${(props) => (props.isActive ? '#e5f4ef' : 'white')};
@@ -77,6 +148,7 @@ const QualityButton = styled('button', {
   cursor: pointer;
   font: inherit;
   font-size: 0.85rem;
+  min-width: 2.4em;
 
   &:hover {
     background: #f0f0f0;
@@ -84,20 +156,21 @@ const QualityButton = styled('button', {
 `;
 
 const ChordList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
   overflow-y: auto;
-  min-height: 0;
 `;
 
-const ChordButton = styled('button', {
-  shouldForwardProp: (prop) => prop !== 'isActive',
-})<{ isActive: boolean }>`
+const ChordButton = styled.button`
   width: 100%;
   padding: 8px;
-  margin: 4px 0;
   border: 1px solid #ccc;
   border-radius: 4px;
-  background: ${(props) => (props.isActive ? '#e0e0e0' : 'white')};
+  background: white;
   cursor: pointer;
+  text-align: left;
 
   &:hover {
     background: #f0f0f0;
@@ -105,9 +178,18 @@ const ChordButton = styled('button', {
 `;
 
 const EmptyState = styled.p`
-  margin: 12px 0 4px;
+  margin: 4px 0;
   color: #666;
   font-size: 0.9rem;
+`;
+
+const SelectedSummary = styled.p`
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f5f5f5;
+  font-size: 0.9rem;
+  color: #333;
 `;
 
 interface ChordPaletteProps {
@@ -124,28 +206,172 @@ export function ChordPalette({
   onBassChange,
 }: ChordPaletteProps) {
   const [searchText, setSearchText] = useState('');
-  const [qualityFilter, setQualityFilter] = useState<QualityFilter>('all');
+  const [recentChords, setRecentChords] = useState<RecentChordEntry[]>(() => loadRecentChords());
 
-  const filteredChords = useMemo(
-    () =>
-      chords.filter((chord) => {
-        const matchesQuality = qualityFilter === 'all' || chord.type === qualityFilter;
-        const matchesSearch = chordMatchesQuery(chord, searchText);
+  const parsedQuery = useMemo(() => parseChordSearchQuery(searchText), [searchText]);
+  const trimmedChordQuery = parsedQuery.chordQuery.trim();
 
-        return matchesQuality && matchesSearch;
-      }),
-    [searchText, qualityFilter],
-  );
+  const matchingChords = useMemo(() => {
+    if (trimmedChordQuery.length === 0) {
+      return [];
+    }
+
+    return chords.filter((chord) => chordMatchesQuery(chord, parsedQuery.chordQuery));
+  }, [parsedQuery.chordQuery, trimmedChordQuery]);
+
+  const searchResults = matchingChords.slice(0, MAX_SEARCH_RESULTS);
+  const hiddenResultCount = matchingChords.length - searchResults.length;
+
+  const recordRecentChord = (entry: RecentChordEntry) => {
+    setRecentChords(addRecentChord(entry));
+  };
+
+  const commitChordSelection = (root: NoteName, quality: ChordQuality, bass: NoteName | null) => {
+    const chord: Chord = { root, type: quality, notes: getChordNotes(root, quality) };
+    onChordSelect(chord);
+    recordRecentChord({ root, quality, bass: bass ?? undefined });
+  };
+
+  const handleRootSelect = (root: NoteName) => {
+    commitChordSelection(root, selectedChord?.type ?? 'major', selectedBass);
+  };
+
+  const handleQualitySelect = (quality: ChordQuality) => {
+    commitChordSelection(selectedChord?.root ?? 'C', quality, selectedBass);
+  };
+
+  const handleBassChange = (bass: NoteName | null) => {
+    onBassChange(bass);
+
+    if (selectedChord) {
+      recordRecentChord({ root: selectedChord.root, quality: selectedChord.type, bass: bass ?? undefined });
+    }
+  };
+
+  const selectSearchResult = (chord: Chord) => {
+    const bass =
+      parsedQuery.hasBassQuery && parsedQuery.bass ? parsedQuery.bass : selectedBass;
+
+    if (parsedQuery.hasBassQuery && parsedQuery.bass) {
+      onBassChange(parsedQuery.bass);
+    }
+
+    onChordSelect(chord);
+    recordRecentChord({ root: chord.root, quality: chord.type, bass: bass ?? undefined });
+    setSearchText('');
+  };
+
+  const selectRecentChord = (entry: RecentChordEntry) => {
+    onChordSelect({ root: entry.root, type: entry.quality, notes: getChordNotes(entry.root, entry.quality) });
+    onBassChange(entry.bass ?? null);
+    recordRecentChord(entry);
+  };
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (trimmedChordQuery.length === 0) {
+      return;
+    }
+
+    const exactMatch = chords.find((chord) => chordMatchesQueryExactly(chord, parsedQuery.chordQuery));
+    if (exactMatch) {
+      selectSearchResult(exactMatch);
+      return;
+    }
+
+    if (searchResults.length === 1) {
+      selectSearchResult(searchResults[0]);
+    }
+  };
 
   return (
     <PalettePanel aria-label="コードパレット">
-      <SearchInput
-        aria-label="コード検索"
-        placeholder="コードを検索"
-        type="search"
-        value={searchText}
-        onChange={(event) => setSearchText(event.target.value)}
-      />
+      {recentChords.length > 0 && (
+        <div aria-label="最近使ったコード">
+          <SectionLabel>最近使ったコード</SectionLabel>
+          <ChipRow>
+            {recentChords.map((entry) => (
+              <ChordChip
+                key={recentChordKey(entry)}
+                isActive={
+                  selectedChord?.root === entry.root &&
+                  selectedChord.type === entry.quality &&
+                  (selectedBass ?? undefined) === entry.bass
+                }
+                type="button"
+                onClick={() => selectRecentChord(entry)}
+              >
+                {formatChordSymbol(entry.root, entry.quality, entry.bass)}
+              </ChordChip>
+            ))}
+          </ChipRow>
+        </div>
+      )}
+
+      <SearchForm onSubmit={handleSearchSubmit} role="search">
+        <SearchInput
+          aria-label="コード検索"
+          placeholder="例: C, Cm7, F#m7, C/E"
+          type="search"
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+        />
+      </SearchForm>
+
+      {trimmedChordQuery.length > 0 && (
+        <ChordList aria-label="検索結果">
+          {searchResults.map((chord) => (
+            <ChordButton
+              key={`${chord.root}-${chord.type}`}
+              type="button"
+              onClick={() => selectSearchResult(chord)}
+            >
+              {formatChordSymbol(
+                chord.root,
+                chord.type,
+                parsedQuery.hasBassQuery ? (parsedQuery.bass ?? undefined) : undefined,
+              )}
+            </ChordButton>
+          ))}
+          {searchResults.length === 0 && <EmptyState>見つかりません</EmptyState>}
+          {hiddenResultCount > 0 && (
+            <EmptyState>他{hiddenResultCount}件あります。絞り込むには入力を続けてください</EmptyState>
+          )}
+        </ChordList>
+      )}
+
+      <div aria-label="ルート音">
+        <SectionLabel>ルート音</SectionLabel>
+        <RootGrid>
+          {NOTE_NAMES.map((note) => (
+            <RootButton
+              key={note}
+              isActive={selectedChord?.root === note}
+              type="button"
+              onClick={() => handleRootSelect(note)}
+            >
+              {note}
+            </RootButton>
+          ))}
+        </RootGrid>
+      </div>
+
+      <div aria-label="コードの種類">
+        <SectionLabel>コード種別</SectionLabel>
+        <FilterGroup>
+          {CHORD_QUALITIES.map((quality) => (
+            <QualityButton
+              key={quality}
+              isActive={selectedChord?.type === quality}
+              type="button"
+              onClick={() => handleQualitySelect(quality)}
+            >
+              {QUALITY_LABELS[quality]}
+            </QualityButton>
+          ))}
+        </FilterGroup>
+      </div>
 
       <BassRow>
         ベース音（分数コード）
@@ -154,7 +380,7 @@ export function ChordPalette({
           value={selectedBass ?? ''}
           onChange={(event) => {
             const value = event.target.value;
-            onBassChange(value === '' ? null : (value as NoteName));
+            handleBassChange(value === '' ? null : (value as NoteName));
           }}
         >
           <option value="">なし</option>
@@ -166,32 +392,11 @@ export function ChordPalette({
         </BassSelect>
       </BassRow>
 
-      <FilterGroup aria-label="コードの種類">
-        {qualityFilters.map((quality) => (
-          <QualityButton
-            key={quality}
-            isActive={qualityFilter === quality}
-            type="button"
-            onClick={() => setQualityFilter(quality)}
-          >
-            {QUALITY_LABELS[quality]}
-          </QualityButton>
-        ))}
-      </FilterGroup>
-
-      <ChordList>
-        {filteredChords.map((chord) => (
-          <ChordButton
-            key={`${chord.root}-${chord.type}`}
-            isActive={selectedChord?.root === chord.root && selectedChord.type === chord.type}
-            type="button"
-            onClick={() => onChordSelect(chord)}
-          >
-            {formatSlashChordLabel(`${chord.root} ${chord.type}`, selectedBass ?? undefined)}
-          </ChordButton>
-        ))}
-        {filteredChords.length === 0 && <EmptyState>見つかりません</EmptyState>}
-      </ChordList>
+      {selectedChord && (
+        <SelectedSummary>
+          選択中: {formatChordSymbol(selectedChord.root, selectedChord.type, selectedBass ?? undefined)}
+        </SelectedSummary>
+      )}
     </PalettePanel>
   );
 }
