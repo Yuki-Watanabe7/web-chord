@@ -36,7 +36,7 @@ import type { SongPlaybackSynths } from '../services/playback';
 import { createMidiBlob, createMidiFileName } from '../services/midiExport';
 import { loadSong, saveSong } from '../services/songStorage';
 import type { MeasureRange, MeasureRangeClipboard } from '../domain/music/timeline';
-import type { NoteName, SongKey } from '../domain/music/types';
+import type { ChordDisplayMode, NoteName, SongKey } from '../domain/music/types';
 import type { Chord } from '../types/chord';
 import type { Song } from '../types/song';
 
@@ -71,6 +71,7 @@ function Editor() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [synth, setSynth] = useState<SongPlaybackSynths | null>(null);
   const [measuresPerRow, setMeasuresPerRow] = useState(4);
+  const [chordDisplayMode, setChordDisplayMode] = useState<ChordDisplayMode>('symbol');
   const [selectedMelodyNoteId, setSelectedMelodyNoteId] = useState<string | null>(null);
   const [measureClipboard, setMeasureClipboard] = useState<MeasureRangeClipboard | null>(null);
   const [selectedMeasureRange, setSelectedMeasureRange] = useState<MeasureRange>({
@@ -265,20 +266,24 @@ function Editor() {
           timeSignature={song.timeSignature}
           measuresPerRow={measuresPerRow}
           songKey={song.key}
+          chordDisplayMode={chordDisplayMode}
           onTitleChange={(title) => setSong((prev) => ({ ...prev, title }))}
           onBpmChange={(bpm) => setSong((prev) => ({ ...prev, bpm }))}
           onTimeSignatureChange={handleTimeSignatureChange}
           onMeasuresPerRowChange={setMeasuresPerRow}
           onKeyChange={handleKeyChange}
+          onChordDisplayModeChange={setChordDisplayMode}
         />
         <ChordProgressionTemplates
           songKey={song.key}
           timeSignature={song.timeSignature}
+          chordDisplayMode={chordDisplayMode}
           onInsert={handleInsertChordProgressionTemplate}
         />
         <TimelineGrid
           song={song}
           measuresPerRow={measuresPerRow}
+          chordDisplayMode={chordDisplayMode}
           selectedMelodyNoteId={selectedMelodyNoteId}
           selectedMeasureRange={selectedMeasureRange}
           canDuplicateMeasureRange={canDuplicateMeasureRangeToNext(song, selectedMeasureRange)}

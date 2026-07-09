@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHORD_PROGRESSION_TEMPLATES,
+  formatChordAsRomanNumeralLabel,
+  getRomanNumeralForChord,
   parseRomanNumeral,
   resolveChordProgressionTemplate,
   resolveRomanNumeralChord,
@@ -91,5 +93,76 @@ describe('resolveChordProgressionTemplate', () => {
       expect(template.description.length).toBeGreaterThan(0);
       expect(template.degrees.length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('getRomanNumeralForChord', () => {
+  it('matches the basic diatonic triads of C major', () => {
+    const key = { tonic: 'C', mode: 'major' } as const;
+
+    expect(getRomanNumeralForChord('C', 'major', key)).toBe('I');
+    expect(getRomanNumeralForChord('D', 'minor', key)).toBe('ii');
+    expect(getRomanNumeralForChord('E', 'minor', key)).toBe('iii');
+    expect(getRomanNumeralForChord('F', 'major', key)).toBe('IV');
+    expect(getRomanNumeralForChord('G', 'major', key)).toBe('V');
+    expect(getRomanNumeralForChord('A', 'minor', key)).toBe('vi');
+    expect(getRomanNumeralForChord('B', 'diminished', key)).toBe('vii°');
+  });
+
+  it('transposes the diatonic degrees to a different major tonic', () => {
+    const key = { tonic: 'G', mode: 'major' } as const;
+
+    expect(getRomanNumeralForChord('G', 'major', key)).toBe('I');
+    expect(getRomanNumeralForChord('D', 'major', key)).toBe('V');
+    expect(getRomanNumeralForChord('E', 'minor', key)).toBe('vi');
+    expect(getRomanNumeralForChord('C', 'major', key)).toBe('IV');
+  });
+
+  it('matches the basic diatonic triads of a natural minor key', () => {
+    const key = { tonic: 'A', mode: 'minor' } as const;
+
+    expect(getRomanNumeralForChord('A', 'minor', key)).toBe('i');
+    expect(getRomanNumeralForChord('B', 'diminished', key)).toBe('ii°');
+    expect(getRomanNumeralForChord('C', 'major', key)).toBe('III');
+    expect(getRomanNumeralForChord('D', 'minor', key)).toBe('iv');
+    expect(getRomanNumeralForChord('E', 'minor', key)).toBe('v');
+    expect(getRomanNumeralForChord('F', 'major', key)).toBe('VI');
+    expect(getRomanNumeralForChord('G', 'major', key)).toBe('VII');
+  });
+
+  it('adds a suffix for non-triad qualities without changing the degree/case', () => {
+    const key = { tonic: 'C', mode: 'major' } as const;
+
+    expect(getRomanNumeralForChord('G', 'dominant7', key)).toBe('V7');
+    expect(getRomanNumeralForChord('C', 'major7', key)).toBe('Imaj7');
+    expect(getRomanNumeralForChord('D', 'minor7', key)).toBe('ii7');
+    expect(getRomanNumeralForChord('C', 'augmented', key)).toBe('I+');
+  });
+
+  it('returns null for a chromatic (non-diatonic) root', () => {
+    const key = { tonic: 'C', mode: 'major' } as const;
+
+    expect(getRomanNumeralForChord('C#', 'major', key)).toBeNull();
+    expect(getRomanNumeralForChord('F#', 'diminished', key)).toBeNull();
+  });
+});
+
+describe('formatChordAsRomanNumeralLabel', () => {
+  it('formats a diatonic chord as a roman numeral', () => {
+    const key = { tonic: 'C', mode: 'major' } as const;
+
+    expect(formatChordAsRomanNumeralLabel('G', 'major', key)).toBe('V');
+  });
+
+  it('appends a slash-chord bass note to the roman numeral', () => {
+    const key = { tonic: 'C', mode: 'major' } as const;
+
+    expect(formatChordAsRomanNumeralLabel('C', 'major', key, 'E')).toBe('I/E');
+  });
+
+  it('falls back to the chord-symbol name for a non-diatonic root', () => {
+    const key = { tonic: 'C', mode: 'major' } as const;
+
+    expect(formatChordAsRomanNumeralLabel('C#', 'major', key)).toBe('C#');
   });
 });

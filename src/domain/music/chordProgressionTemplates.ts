@@ -1,3 +1,5 @@
+import { formatChordSymbol, formatSlashChordLabel } from './chords';
+import { noteNameToPitchClass, normalizePitchClass } from './pitchClass';
 import { transposeNoteName } from './timeline';
 import type { ChordQuality, NoteName, SongKey } from './types';
 
@@ -97,6 +99,75 @@ export const resolveChordProgressionTemplate = (
   key: Pick<SongKey, 'tonic'>,
 ): ResolvedTemplateChord[] =>
   template.degrees.map((roman) => resolveRomanNumeralChord(roman, key.tonic));
+
+// Roman-numeral base (index 0 = degree 1), reused for both major and minor keys.
+const ROMAN_NUMERALS_BY_DEGREE: readonly string[] = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+
+// Semitone offset of each scale degree above the tonic, one table per key mode.
+const MAJOR_SCALE_DEGREE_SEMITONES: readonly number[] = [0, 2, 4, 5, 7, 9, 11];
+const NATURAL_MINOR_SCALE_DEGREE_SEMITONES: readonly number[] = [0, 2, 3, 5, 7, 8, 10];
+
+// Numeral case reflects the chord's actual quality (major-family = uppercase,
+// minor-family = lowercase), independent of what a "textbook" diatonic chord
+// on that degree would be — this is standard roman-numeral notation.
+const UPPERCASE_QUALITIES: ReadonlySet<ChordQuality> = new Set([
+  'major',
+  'major7',
+  'dominant7',
+  'augmented',
+]);
+
+// Suffix appended after the (already-cased) numeral to disambiguate quality further.
+const ROMAN_NUMERAL_QUALITY_SUFFIXES: Record<ChordQuality, string> = {
+  major: '',
+  minor: '',
+  diminished: '°',
+  augmented: '+',
+  dominant7: '7',
+  major7: 'maj7',
+  minor7: '7',
+};
+
+/**
+ * Converts a chord's root to a roman-numeral degree relative to the given
+ * key, e.g. `getRomanNumeralForChord('G', 'major', { tonic: 'C', mode: 'major' })`
+ * -> `'V'`. Returns `null` when the root isn't a note of the key's diatonic
+ * scale (basic major/natural-minor scales only — see module docs for scope).
+ */
+export const getRomanNumeralForChord = (
+  root: NoteName,
+  quality: ChordQuality,
+  key: SongKey,
+): string | null => {
+  const interval = normalizePitchClass(noteNameToPitchClass(root) - noteNameToPitchClass(key.tonic));
+  const scaleDegreeSemitones =
+    key.mode === 'minor' ? NATURAL_MINOR_SCALE_DEGREE_SEMITONES : MAJOR_SCALE_DEGREE_SEMITONES;
+  const degreeIndex = scaleDegreeSemitones.indexOf(interval);
+
+  if (degreeIndex === -1) {
+    return null;
+  }
+
+  const numeral = ROMAN_NUMERALS_BY_DEGREE[degreeIndex];
+  const casedNumeral = UPPERCASE_QUALITIES.has(quality) ? numeral : numeral.toLowerCase();
+
+  return `${casedNumeral}${ROMAN_NUMERAL_QUALITY_SUFFIXES[quality]}`;
+};
+
+/**
+ * Formats a chord as a roman-numeral label for display, falling back to its
+ * chord-symbol name (e.g. "C#") when the root isn't diatonic to the key.
+ */
+export const formatChordAsRomanNumeralLabel = (
+  root: NoteName,
+  quality: ChordQuality,
+  key: SongKey,
+  bass?: NoteName,
+): string => {
+  const roman = getRomanNumeralForChord(root, quality, key);
+
+  return formatSlashChordLabel(roman ?? formatChordSymbol(root, quality), bass);
+};
 
 export const CHORD_PROGRESSION_TEMPLATES: ChordProgressionTemplate[] = [
   {

@@ -3,10 +3,11 @@ import styled from '@emotion/styled';
 import { formatChordSymbol } from '../../domain/music/chords';
 import {
   CHORD_PROGRESSION_TEMPLATES,
+  formatChordAsRomanNumeralLabel,
   resolveChordProgressionTemplate,
 } from '../../domain/music/chordProgressionTemplates';
 import type { ResolvedTemplateChord } from '../../domain/music/chordProgressionTemplates';
-import type { SongKey, TimeSignature } from '../../domain/music/types';
+import type { ChordDisplayMode, SongKey, TimeSignature } from '../../domain/music/types';
 
 const Panel = styled.div`
   display: flex;
@@ -74,12 +75,14 @@ const resolveBeatsPerChord = (key: DurationOptionKey, timeSignature: TimeSignatu
 interface ChordProgressionTemplatesProps {
   songKey: SongKey;
   timeSignature: TimeSignature;
+  chordDisplayMode: ChordDisplayMode;
   onInsert: (chords: ResolvedTemplateChord[], beatsPerChord: number) => void;
 }
 
 export function ChordProgressionTemplates({
   songKey,
   timeSignature,
+  chordDisplayMode,
   onInsert,
 }: ChordProgressionTemplatesProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(CHORD_PROGRESSION_TEMPLATES[0].id);
@@ -93,7 +96,11 @@ export function ChordProgressionTemplates({
   const beatsPerChord = resolveBeatsPerChord(durationKey, timeSignature);
 
   const previewText = resolvedChords
-    .map((chord) => formatChordSymbol(chord.root, chord.quality))
+    .map((chord) =>
+      chordDisplayMode === 'roman'
+        ? formatChordAsRomanNumeralLabel(chord.root, chord.quality, songKey)
+        : formatChordSymbol(chord.root, chord.quality),
+    )
     .join(' - ');
 
   return (
