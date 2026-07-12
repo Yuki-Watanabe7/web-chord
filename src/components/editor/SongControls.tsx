@@ -1,5 +1,5 @@
 import styled from '@emotion/styled';
-import { formatTimeSignature } from '../../domain/music/timeline';
+import { MAX_TOTAL_MEASURES, MIN_TOTAL_MEASURES, formatTimeSignature } from '../../domain/music/timeline';
 import { NOTE_NAMES } from '../../domain/music/chords';
 import type { ChordDisplayMode, SongKey, TimeSignature } from '../../domain/music/types';
 
@@ -40,6 +40,22 @@ const TimeSignatureSelect = styled.select`
   border: 1px solid #ccc;
   border-radius: 4px;
   background: white;
+`;
+
+const TotalMeasuresControl = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+`;
+
+const TotalMeasuresInput = styled.input`
+  width: 80px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 `;
 
 const WrapControl = styled.div`
@@ -106,12 +122,14 @@ interface SongControlsProps {
   title: string;
   bpm: number;
   timeSignature: TimeSignature;
+  totalMeasures: number;
   measuresPerRow: number;
   songKey: SongKey;
   chordDisplayMode: ChordDisplayMode;
   onTitleChange: (title: string) => void;
   onBpmChange: (bpm: number) => void;
   onTimeSignatureChange: (timeSignature: string) => void;
+  onTotalMeasuresChange: (totalMeasures: number) => void;
   onMeasuresPerRowChange: (measuresPerRow: number) => void;
   onKeyChange: (key: SongKey) => void;
   onChordDisplayModeChange: (mode: ChordDisplayMode) => void;
@@ -121,12 +139,14 @@ export function SongControls({
   title,
   bpm,
   timeSignature,
+  totalMeasures,
   measuresPerRow,
   songKey,
   chordDisplayMode,
   onTitleChange,
   onBpmChange,
   onTimeSignatureChange,
+  onTotalMeasuresChange,
   onMeasuresPerRowChange,
   onKeyChange,
   onChordDisplayModeChange,
@@ -170,6 +190,24 @@ export function SongControls({
           ))}
         </TimeSignatureSelect>
       </TimeSignatureControl>
+
+      <TotalMeasuresControl title="曲全体の小節数（1画面あたりの折り返し小節数とは別の設定です）">
+        <label htmlFor="total-measures-input">曲の小節数:</label>
+        <TotalMeasuresInput
+          id="total-measures-input"
+          type="number"
+          min={MIN_TOTAL_MEASURES}
+          max={MAX_TOTAL_MEASURES}
+          value={totalMeasures}
+          onChange={(event) => {
+            const parsed = parseInt(event.target.value, 10);
+            if (Number.isNaN(parsed)) {
+              return;
+            }
+            onTotalMeasuresChange(parsed);
+          }}
+        />
+      </TotalMeasuresControl>
 
       <KeyControl>
         <label>キー:</label>

@@ -10,6 +10,7 @@ import type { ResolvedTemplateChord } from '../domain/music/chordProgressionTemp
 import {
   changeSongKey,
   changeSongTimeSignature,
+  changeSongTotalMeasures,
   canPasteMeasureRangeClipboard,
   copyMeasureRangeFromSong,
   createMusicId,
@@ -22,10 +23,12 @@ import {
   insertMelodyNoteInSong,
   canDuplicateMeasureRangeToNext,
   normalizeMeasureRange,
+  normalizeTotalMeasures,
   pasteMeasureRangeClipboard,
   parseTimeSignature,
   resizeChordInSong,
   resizeMelodyNoteInSong,
+  wouldShortenSongLoseContent,
 } from '../domain/music/timeline';
 import {
   createSongPlaybackSynths,
@@ -112,6 +115,30 @@ function Editor() {
   const handleTimeSignatureChange = (timeSignatureValue: string) => {
     const nextTimeSignature = parseTimeSignature(timeSignatureValue);
     setSong((prev) => changeSongTimeSignature(prev, nextTimeSignature));
+  };
+
+  const handleTotalMeasuresChange = (nextTotalMeasures: number) => {
+    setSong((prev) => {
+      const normalizedNext = normalizeTotalMeasures(nextTotalMeasures);
+
+      if (normalizedNext === prev.totalMeasures) {
+        return prev;
+      }
+
+      const isShortening = normalizedNext < prev.totalMeasures;
+
+      if (
+        isShortening &&
+        wouldShortenSongLoseContent(prev, normalizedNext) &&
+        !window.confirm(
+          '小節数を短くすると、末尾のコードやメロディが削除・切り詰められます。よろしいですか？',
+        )
+      ) {
+        return prev;
+      }
+
+      return changeSongTotalMeasures(prev, normalizedNext);
+    });
   };
 
   const handleKeyChange = (nextKey: SongKey) => {
@@ -264,12 +291,14 @@ function Editor() {
           title={song.title}
           bpm={song.bpm}
           timeSignature={song.timeSignature}
+          totalMeasures={song.totalMeasures}
           measuresPerRow={measuresPerRow}
           songKey={song.key}
           chordDisplayMode={chordDisplayMode}
           onTitleChange={(title) => setSong((prev) => ({ ...prev, title }))}
           onBpmChange={(bpm) => setSong((prev) => ({ ...prev, bpm }))}
           onTimeSignatureChange={handleTimeSignatureChange}
+          onTotalMeasuresChange={handleTotalMeasuresChange}
           onMeasuresPerRowChange={setMeasuresPerRow}
           onKeyChange={handleKeyChange}
           onChordDisplayModeChange={setChordDisplayMode}

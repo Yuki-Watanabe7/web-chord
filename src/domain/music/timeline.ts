@@ -12,6 +12,8 @@ import type {
 } from './types';
 
 export const DEFAULT_TOTAL_MEASURES = 16;
+export const MIN_TOTAL_MEASURES = 1;
+export const MAX_TOTAL_MEASURES = 256;
 export const DEFAULT_BPM = 120;
 export const DEFAULT_TIME_SIGNATURE: TimeSignature = {
   beatsPerMeasure: 4,
@@ -335,6 +337,72 @@ export const changeSongTimeSignature = (song: Song, timeSignature: TimeSignature
   return {
     ...song,
     timeSignature,
+  };
+};
+
+export const normalizeTotalMeasures = (value: number): number => {
+  const rounded = Math.round(value);
+
+  if (!Number.isFinite(rounded)) {
+    return MIN_TOTAL_MEASURES;
+  }
+
+  return Math.max(MIN_TOTAL_MEASURES, Math.min(MAX_TOTAL_MEASURES, rounded));
+};
+
+/**
+ * Whether shortening to `nextTotalMeasures` would delete or truncate any
+ * existing chord/melody event, so callers can gate the change behind a
+ * confirmation dialog only when it's actually destructive.
+ */
+export const wouldShortenSongLoseContent = (
+  song: Pick<Song, 'timeSignature' | 'chords' | 'melodyNotes'>,
+  nextTotalMeasures: number,
+): boolean => {
+  const nextTotalBeats = normalizeTotalMeasures(nextTotalMeasures) * song.timeSignature.beatsPerMeasure;
+
+  return (
+    song.chords.some((chord) => getChordEndBeat(chord) > nextTotalBeats) ||
+    song.melodyNotes.some((note) => getMelodyNoteEndBeat(note) > nextTotalBeats)
+  );
+};
+
+const trimEventToBeatLimit = <T extends Pick<ChordEvent | MelodyNote, 'startBeat' | 'durationBeats'>>(
+  event: T,
+  beatLimit: number,
+): T | null => {
+  if (event.startBeat >= beatLimit) {
+    return null;
+  }
+
+  if (event.startBeat + event.durationBeats <= beatLimit) {
+    return event;
+  }
+
+  return { ...event, durationBeats: beatLimit - event.startBeat };
+};
+
+/**
+ * Grows or shrinks the song's tail by measure count. Growing preserves all
+ * existing events untouched. Shrinking drops events that start at/after the
+ * new end and truncates events that cross it, matching
+ * `wouldShortenSongLoseContent`'s notion of "destructive".
+ */
+export const changeSongTotalMeasures = (song: Song, nextTotalMeasures: number): Song => {
+  const normalizedTotalMeasures = normalizeTotalMeasures(nextTotalMeasures);
+  const nextTotalBeats = normalizedTotalMeasures * song.timeSignature.beatsPerMeasure;
+
+  return {
+    ...song,
+    totalMeasures: normalizedTotalMeasures,
+    chords: song.chords.flatMap((chord) => {
+      const trimmed = trimEventToBeatLimit(chord, nextTotalBeats);
+      return trimmed ? [trimmed] : [];
+    }),
+    melodyNotes: song.melodyNotes.flatMap((note) => {
+      const trimmed = trimEventToBeatLimit(note, nextTotalBeats);
+      return trimmed ? [trimmed] : [];
+    }),
   };
 };
 

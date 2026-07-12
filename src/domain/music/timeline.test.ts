@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   changeSongKey,
+  changeSongTotalMeasures,
   chordEventToChordDefinition,
   copyMeasureRangeFromSong,
   createEmptySong,
@@ -9,10 +10,16 @@ import {
   insertChordInSong,
   insertChordProgressionInSong,
   insertMelodyNoteInSong,
+  MAX_TOTAL_MEASURES,
+  normalizeMeasureRange,
+  normalizeTotalMeasures,
   pasteMeasureRangeClipboard,
+  resizeChordInSong,
+  resizeMelodyNoteInSong,
   transposeChordEvent,
   transposeMelodyNote,
   transposeNoteName,
+  wouldShortenSongLoseContent,
 } from './timeline';
 import type { ChordDefinition } from './types';
 
@@ -207,5 +214,150 @@ describe('insertChordProgressionInSong', () => {
     const next = insertChordProgressionInSong(song, 0, [...progression], 4);
 
     expect(next).toBe(song);
+  });
+});
+
+describe('normalizeTotalMeasures', () => {
+  it('clamps below the minimum up to 1', () => {
+    expect(normalizeTotalMeasures(0)).toBe(1);
+    expect(normalizeTotalMeasures(-5)).toBe(1);
+  });
+
+  it('clamps above the maximum down to MAX_TOTAL_MEASURES', () => {
+    expect(normalizeTotalMeasures(1000)).toBe(MAX_TOTAL_MEASURES);
+  });
+
+  it('rounds fractional values to the nearest integer', () => {
+    expect(normalizeTotalMeasures(8.6)).toBe(9);
+  });
+
+  it('falls back to the minimum for non-finite input', () => {
+    expect(normalizeTotalMeasures(Number.NaN)).toBe(1);
+  });
+});
+
+describe('changeSongTotalMeasures (growing)', () => {
+  it('appends empty measures without touching existing chords or melody notes', () => {
+    const withChord = insertChordInSong(createEmptySong({ totalMeasures: 4 }), 0, {
+      root: 'C',
+      type: 'major',
+      notes: ['C', 'E', 'G'],
+    });
+    const withMelody = insertMelodyNoteInSong(withChord, 0, 'E', 4);
+
+    const grown = changeSongTotalMeasures(withMelody, 8);
+
+    expect(grown.totalMeasures).toBe(8);
+    expect(grown.chords).toEqual(withMelody.chords);
+    expect(grown.melodyNotes).toEqual(withMelody.melodyNotes);
+  });
+});
+
+describe('changeSongTotalMeasures (shrinking)', () => {
+  it('removes chords and melody notes that start after the new end', () => {
+    const song = createEmptySong({ totalMeasures: 8, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const withChord = insertChordInSong(song, 20, { root: 'G', type: 'major', notes: ['G', 'B', 'D'] });
+    const withMelody = insertMelodyNoteInSong(withChord, 20, 'B', 4);
+
+    const shrunk = changeSongTotalMeasures(withMelody, 4);
+
+    expect(shrunk.totalMeasures).toBe(4);
+    expect(shrunk.chords).toHaveLength(0);
+    expect(shrunk.melodyNotes).toHaveLength(0);
+  });
+
+  it('truncates the duration of events that straddle the new end boundary', () => {
+    // insertChordInSong/insertMelodyNoteInSong fill to the song's current end by
+    // default, so resize them explicitly to a duration that straddles beat 16
+    // (the new end once shrunk to 4 measures) without reaching the old end.
+    const song = createEmptySong({ totalMeasures: 8, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const withChord = insertChordInSong(song, 12, { root: 'F', type: 'major', notes: ['F', 'A', 'C'] });
+    const resizedChord = resizeChordInSong(withChord, withChord.chords[0].id, 8);
+    const withMelody = insertMelodyNoteInSong(resizedChord, 12, 'A', 4);
+    const resizedMelody = resizeMelodyNoteInSong(withMelody, withMelody.melodyNotes[0].id, 8);
+
+    const shrunk = changeSongTotalMeasures(resizedMelody, 4);
+
+    expect(shrunk.totalMeasures).toBe(4);
+    expect(shrunk.chords[0]).toMatchObject({ startBeat: 12, durationBeats: 4 });
+    expect(shrunk.melodyNotes[0]).toMatchObject({ startBeat: 12, durationBeats: 4 });
+  });
+
+  it('leaves events that already fit entirely before the new end untouched', () => {
+    const song = createEmptySong({ totalMeasures: 8, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const withChord = insertChordInSong(song, 0, { root: 'C', type: 'major', notes: ['C', 'E', 'G'] });
+    const resizedChord = resizeChordInSong(withChord, withChord.chords[0].id, 4);
+
+    const shrunk = changeSongTotalMeasures(resizedChord, 4);
+
+    expect(shrunk.chords).toEqual(resizedChord.chords);
+  });
+
+  it('drops the effective length to 0 or below without leaving a stray event', () => {
+    const song = createEmptySong({ totalMeasures: 8, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const withChord = insertChordInSong(song, 16, { root: 'C', type: 'major', notes: ['C', 'E', 'G'] });
+
+    const shrunk = changeSongTotalMeasures(withChord, 4);
+
+    expect(shrunk.chords).toHaveLength(0);
+  });
+
+  it('normalizes totalMeasures to an integer within [1, MAX_TOTAL_MEASURES]', () => {
+    const song = createEmptySong({ totalMeasures: 8 });
+
+    expect(changeSongTotalMeasures(song, 0).totalMeasures).toBe(1);
+    expect(changeSongTotalMeasures(song, -3).totalMeasures).toBe(1);
+    expect(changeSongTotalMeasures(song, 10000).totalMeasures).toBe(MAX_TOTAL_MEASURES);
+    expect(changeSongTotalMeasures(song, 5.6).totalMeasures).toBe(6);
+  });
+});
+
+describe('wouldShortenSongLoseContent', () => {
+  it('is false for an unaffected shortening (only trailing empty measures removed)', () => {
+    const song = createEmptySong({ totalMeasures: 8, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const withChord = insertChordInSong(song, 0, { root: 'C', type: 'major', notes: ['C', 'E', 'G'] });
+    const resizedChord = resizeChordInSong(withChord, withChord.chords[0].id, 4);
+
+    expect(wouldShortenSongLoseContent(resizedChord, 4)).toBe(false);
+  });
+
+  it('is true when a chord would be truncated', () => {
+    const song = createEmptySong({ totalMeasures: 8, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const withChord = insertChordInSong(song, 12, { root: 'F', type: 'major', notes: ['F', 'A', 'C'] });
+
+    expect(wouldShortenSongLoseContent(withChord, 4)).toBe(true);
+  });
+
+  it('is true when a melody note would be deleted entirely', () => {
+    const song = createEmptySong({ totalMeasures: 8, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } });
+    const withMelody = insertMelodyNoteInSong(song, 20, 'B', 4);
+
+    expect(wouldShortenSongLoseContent(withMelody, 4)).toBe(true);
+  });
+
+  it('is false when growing the song', () => {
+    const song = createEmptySong({ totalMeasures: 4 });
+
+    expect(wouldShortenSongLoseContent(song, 8)).toBe(false);
+  });
+});
+
+describe('normalizeMeasureRange after changeSongTotalMeasures', () => {
+  it('clamps a previously-selected range that no longer fits the shortened song', () => {
+    const song = createEmptySong({ totalMeasures: 8 });
+    const shrunk = changeSongTotalMeasures(song, 4);
+
+    const clamped = normalizeMeasureRange(shrunk, { startMeasure: 6, measureCount: 2 });
+
+    expect(clamped).toEqual({ startMeasure: 3, measureCount: 1 });
+  });
+
+  it('leaves a still-valid range untouched after growing the song', () => {
+    const song = createEmptySong({ totalMeasures: 4 });
+    const grown = changeSongTotalMeasures(song, 8);
+
+    const range = normalizeMeasureRange(grown, { startMeasure: 1, measureCount: 2 });
+
+    expect(range).toEqual({ startMeasure: 1, measureCount: 2 });
   });
 });
