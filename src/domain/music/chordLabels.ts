@@ -1,4 +1,4 @@
-import { formatChordSymbol, formatSlashChordLabel } from './chords';
+import { formatChordNameInKey, formatChordSymbolInKey } from './chords';
 import { formatChordAsRomanNumeralLabel } from './chordProgressionTemplates';
 import type { ChordDisplayMode, ChordEvent, SongKey } from './types';
 
@@ -36,7 +36,7 @@ const formatFullChordLabel = (
     return formatChordAsRomanNumeralLabel(chord.root, chord.quality, key, chord.bass);
   }
 
-  return formatSlashChordLabel(`${chord.root} ${chord.quality}`, chord.bass);
+  return formatChordNameInKey(chord.root, chord.quality, key, chord.bass);
 };
 
 const formatCompactChordLabel = (
@@ -48,7 +48,7 @@ const formatCompactChordLabel = (
     return formatChordAsRomanNumeralLabel(chord.root, chord.quality, key, chord.bass);
   }
 
-  return formatChordSymbol(chord.root, chord.quality, chord.bass);
+  return formatChordSymbolInKey(chord.root, chord.quality, key, chord.bass);
 };
 
 export const formatTimelineChordLabel = (

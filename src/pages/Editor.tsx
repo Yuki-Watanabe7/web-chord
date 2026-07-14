@@ -285,6 +285,7 @@ function Editor() {
       <ChordPalette
         selectedChord={selectedChord}
         selectedBass={selectedBass}
+        songKey={song.key}
         onChordSelect={setSelectedChord}
         onBassChange={setSelectedBass}
       />

@@ -3,12 +3,16 @@ import { NOTE_NAMES } from './types';
 import {
   areEnharmonicallyEquivalent,
   extractLeadingNoteName,
+  formatKeyTonicName,
+  formatNoteNameInKey,
+  getDiatonicPitchClassSpellings,
   getEnharmonicNoteNames,
   legacyNoteNameToPitchClass,
   noteNameToPitchClass,
   normalizePitchClass,
   parseNoteNameToPitchClass,
   pitchClassToNoteName,
+  spellPitchClassInKey,
 } from './pitchClass';
 
 describe('noteNameToPitchClass / pitchClassToNoteName', () => {
@@ -98,5 +102,66 @@ describe('legacyNoteNameToPitchClass', () => {
     NOTE_NAMES.forEach((note) => {
       expect(legacyNoteNameToPitchClass(note)).toBe(noteNameToPitchClass(note));
     });
+  });
+});
+
+describe('spellPitchClassInKey', () => {
+  it('spells the F minor scale with natural flat names', () => {
+    const key = { tonic: 'F', mode: 'minor' } as const;
+
+    expect(getDiatonicPitchClassSpellings(key)).toEqual([
+      'F',
+      'G',
+      'A♭',
+      'B♭',
+      'C',
+      'D♭',
+      'E♭',
+    ]);
+    expect(spellPitchClassInKey(10, key)).toBe('B♭');
+    expect(spellPitchClassInKey(1, key)).toBe('D♭');
+    expect(spellPitchClassInKey(3, key)).toBe('E♭');
+    expect(spellPitchClassInKey(8, key)).toBe('A♭');
+  });
+
+  it('uses sharp spellings for representative sharp-side keys', () => {
+    expect(getDiatonicPitchClassSpellings({ tonic: 'C', mode: 'major' })).toEqual([
+      'C',
+      'D',
+      'E',
+      'F',
+      'G',
+      'A',
+      'B',
+    ]);
+    expect(spellPitchClassInKey(6, { tonic: 'G', mode: 'major' })).toBe('F♯');
+    expect(spellPitchClassInKey(6, { tonic: 'D', mode: 'major' })).toBe('F♯');
+    expect(spellPitchClassInKey(1, { tonic: 'D', mode: 'major' })).toBe('C♯');
+    expect(spellPitchClassInKey(6, { tonic: 'E', mode: 'minor' })).toBe('F♯');
+  });
+
+  it('uses flat spellings for representative flat-side keys', () => {
+    expect(getDiatonicPitchClassSpellings({ tonic: 'D#', mode: 'major' })).toEqual([
+      'E♭',
+      'F',
+      'G',
+      'A♭',
+      'B♭',
+      'C',
+      'D',
+    ]);
+    expect(spellPitchClassInKey(8, { tonic: 'D#', mode: 'major' })).toBe('A♭');
+    expect(spellPitchClassInKey(1, { tonic: 'G#', mode: 'major' })).toBe('D♭');
+  });
+
+  it('falls back consistently for non-diatonic tones', () => {
+    expect(spellPitchClassInKey(1, { tonic: 'C', mode: 'major' })).toBe('C♯');
+    expect(spellPitchClassInKey(6, { tonic: 'F', mode: 'minor' })).toBe('G♭');
+  });
+
+  it('formats stored note names and key tonics without changing internal values', () => {
+    expect(formatNoteNameInKey('A#', { tonic: 'F', mode: 'minor' })).toBe('B♭');
+    expect(formatKeyTonicName('D#', 'major')).toBe('E♭');
+    expect(formatKeyTonicName('C#', 'minor')).toBe('C♯');
   });
 });

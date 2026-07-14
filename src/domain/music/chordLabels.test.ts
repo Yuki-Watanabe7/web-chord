@@ -19,7 +19,7 @@ describe('formatTimelineChordLabel', () => {
     });
   });
 
-  it('keeps sharp roots readable in a one-beat chord', () => {
+  it('keeps sharp-side roots readable in a one-beat chord', () => {
     expect(
       formatTimelineChordLabel(
         { root: 'C#', quality: 'major' },
@@ -28,8 +28,8 @@ describe('formatTimelineChordLabel', () => {
         1,
       ),
     ).toEqual({
-      full: 'C# major',
-      visible: { primary: 'C#' },
+      full: 'C♯ major',
+      visible: { primary: 'C♯' },
     });
   });
 
@@ -56,8 +56,8 @@ describe('formatTimelineChordLabel', () => {
         1,
       ),
     ).toEqual({
-      full: 'C# major7/G#',
-      visible: { primary: 'C#maj7', secondary: '/G#' },
+      full: 'C♯ major7/G♯',
+      visible: { primary: 'C♯maj7', secondary: '/G♯' },
     });
   });
 
@@ -98,8 +98,40 @@ describe('formatTimelineChordLabel', () => {
         2,
       ),
     ).toEqual({
-      full: 'C# major7/G#',
-      visible: { primary: 'C# major7/G#' },
+      full: 'C♯ major7/G♯',
+      visible: { primary: 'C♯ major7/G♯' },
+    });
+  });
+
+  it('uses flat spellings for F minor symbol labels', () => {
+    const fMinorKey = { tonic: 'F', mode: 'minor' } satisfies SongKey;
+
+    expect(
+      formatTimelineChordLabel(
+        { root: 'C#', quality: 'major7', bass: 'G#' },
+        'symbol',
+        fMinorKey,
+        1,
+      ),
+    ).toEqual({
+      full: 'D♭ major7/A♭',
+      visible: { primary: 'D♭maj7', secondary: '/A♭' },
+    });
+  });
+
+  it('uses flat spellings for roman slash-bass labels', () => {
+    const fMinorKey = { tonic: 'F', mode: 'minor' } satisfies SongKey;
+
+    expect(
+      formatTimelineChordLabel(
+        { root: 'A#', quality: 'minor7', bass: 'A#' },
+        'roman',
+        fMinorKey,
+        1,
+      ),
+    ).toEqual({
+      full: 'iv7/B♭',
+      visible: { primary: 'iv7', secondary: '/B♭' },
     });
   });
 });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import styled from '@emotion/styled';
-import { formatChordSymbol } from '../../domain/music/chords';
+import { formatChordSymbolInKey } from '../../domain/music/chords';
 import {
   CHORD_PROGRESSION_TEMPLATES,
   formatChordAsRomanNumeralLabel,
@@ -99,7 +99,7 @@ export function ChordProgressionTemplates({
     .map((chord) =>
       chordDisplayMode === 'roman'
         ? formatChordAsRomanNumeralLabel(chord.root, chord.quality, songKey)
-        : formatChordSymbol(chord.root, chord.quality),
+        : formatChordSymbolInKey(chord.root, chord.quality, songKey),
     )
     .join(' - ');
 
