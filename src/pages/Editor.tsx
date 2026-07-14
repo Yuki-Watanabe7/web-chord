@@ -37,6 +37,7 @@ import {
 } from '../services/playback';
 import type { SongPlaybackSynths } from '../services/playback';
 import { createMidiBlob, createMidiFileName } from '../services/midiExport';
+import { createSongJsonFileName, downloadSongExportFile } from '../services/songFile';
 import { loadSong, saveSong } from '../services/songStorage';
 import type { MeasureRange, MeasureRangeClipboard } from '../domain/music/timeline';
 import type { ChordDisplayMode, NoteName, SongKey } from '../domain/music/types';
@@ -65,6 +66,24 @@ const ChordGrid = styled.div`
   padding-bottom: 60px;
 `;
 
+const SaveError = styled.p`
+  position: fixed;
+  right: 20px;
+  bottom: 76px;
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: #8a1f11;
+  background: #fff1f0;
+  z-index: 1;
+
+  @media (max-width: 620px) {
+    right: 12px;
+    bottom: 116px;
+    max-width: calc(100vw - 24px);
+  }
+`;
+
 function Editor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -78,6 +97,7 @@ function Editor() {
   const [selectedMelodyNoteId, setSelectedMelodyNoteId] = useState<string | null>(null);
   const [melodyInputDurationBeats, setMelodyInputDurationBeats] = useState(1);
   const [measureClipboard, setMeasureClipboard] = useState<MeasureRangeClipboard | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedMeasureRange, setSelectedMeasureRange] = useState<MeasureRange>({
     startMeasure: 0,
     measureCount: 1,
@@ -262,8 +282,12 @@ function Editor() {
   };
 
   const handleSave = () => {
-    saveSong(song);
-    navigate('/');
+    try {
+      saveSong(song);
+      navigate('/');
+    } catch {
+      setSaveError('保存先へ書き込めませんでした。ブラウザの空き容量やサイトデータの設定を確認してください。');
+    }
   };
 
   const handleMidiExport = () => {
@@ -278,6 +302,10 @@ function Editor() {
     window.setTimeout(() => {
       URL.revokeObjectURL(url);
     }, 0);
+  };
+
+  const handleJsonExport = () => {
+    downloadSongExportFile([song], createSongJsonFileName(song));
   };
 
   return (
@@ -347,7 +375,9 @@ function Editor() {
         onClear={clearGrid}
         onSave={handleSave}
         onExportMidi={handleMidiExport}
+        onExportJson={handleJsonExport}
       />
+      {saveError && <SaveError role="alert">{saveError}</SaveError>}
     </AppContainer>
   );
 }
