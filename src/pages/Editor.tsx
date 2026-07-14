@@ -76,6 +76,7 @@ function Editor() {
   const [measuresPerRow, setMeasuresPerRow] = useState(4);
   const [chordDisplayMode, setChordDisplayMode] = useState<ChordDisplayMode>('symbol');
   const [selectedMelodyNoteId, setSelectedMelodyNoteId] = useState<string | null>(null);
+  const [melodyInputDurationBeats, setMelodyInputDurationBeats] = useState(1);
   const [measureClipboard, setMeasureClipboard] = useState<MeasureRangeClipboard | null>(null);
   const [selectedMeasureRange, setSelectedMeasureRange] = useState<MeasureRange>({
     startMeasure: 0,
@@ -192,7 +193,9 @@ function Editor() {
   const handleMelodyCellClick = (startBeat: number, pitch: NoteName, octave: number) => {
     const noteId = createMusicId('melody');
 
-    setSong((prev) => insertMelodyNoteInSong(prev, startBeat, pitch, octave, noteId));
+    setSong((prev) =>
+      insertMelodyNoteInSong(prev, startBeat, pitch, octave, noteId, melodyInputDurationBeats),
+    );
     setSelectedMelodyNoteId(noteId);
     previewNote(pitch, octave);
   };
@@ -314,6 +317,7 @@ function Editor() {
           measuresPerRow={measuresPerRow}
           chordDisplayMode={chordDisplayMode}
           selectedMelodyNoteId={selectedMelodyNoteId}
+          selectedMelodyDurationBeats={melodyInputDurationBeats}
           selectedMeasureRange={selectedMeasureRange}
           canDuplicateMeasureRange={canDuplicateMeasureRangeToNext(song, selectedMeasureRange)}
           canPasteMeasureRange={canPasteMeasureRangeClipboard(
@@ -328,6 +332,7 @@ function Editor() {
           onCopyMeasureRange={handleCopyMeasureRange}
           onPasteMeasureRange={handlePasteMeasureRange}
           onDuplicateMeasureRange={handleDuplicateMeasureRange}
+          onMelodyDurationChange={setMelodyInputDurationBeats}
           onMelodyCellClick={handleMelodyCellClick}
           onMelodyNoteSelect={handleMelodyNoteSelect}
           onMelodyNoteDelete={handleMelodyNoteDelete}

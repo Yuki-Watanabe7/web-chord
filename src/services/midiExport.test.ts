@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createEmptySong, insertChordInSong } from '../domain/music/timeline';
+import { createEmptySong, insertChordInSong, insertMelodyNoteInSong } from '../domain/music/timeline';
 import { createMidiFile } from './midiExport';
 
 const containsSubsequence = (haystack: Uint8Array, needle: number[]) => {
@@ -35,5 +35,23 @@ describe('createMidiFile (slash chords)', () => {
 
     const bytes = createMidiFile(song);
     expect(containsSubsequence(bytes, [0x90, 40, 72])).toBe(false);
+  });
+});
+
+describe('createMidiFile (fractional melody beats)', () => {
+  it('emits half-beat melody timing as MIDI ticks', () => {
+    const song = insertMelodyNoteInSong(
+      createEmptySong({ totalMeasures: 1 }),
+      0.5,
+      'C',
+      4,
+      'melody-1',
+      1.5,
+    );
+
+    const bytes = createMidiFile(song);
+
+    expect(containsSubsequence(bytes, [0x81, 0x70, 0x91, 60, 102])).toBe(true);
+    expect(containsSubsequence(bytes, [0x85, 0x50, 0x81, 60, 0])).toBe(true);
   });
 });
