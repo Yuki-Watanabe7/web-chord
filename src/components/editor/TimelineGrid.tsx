@@ -1,7 +1,7 @@
 import styled from '@emotion/styled';
 import { useEffect, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { formatSlashChordLabel, getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
-import { formatChordAsRomanNumeralLabel } from '../../domain/music/chordProgressionTemplates';
+import { getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
+import { formatTimelineChordLabel } from '../../domain/music/chordLabels';
 import {
   normalizeMeasureRange,
   getChordEndBeat,
@@ -187,9 +187,9 @@ const ChordBlock = styled('div', {
   top: 10px;
   height: 56px;
   display: grid;
-  grid-template-rows: 1fr auto;
-  gap: 3px;
-  padding: ${(props) => (props.isCompact ? '5px 3px' : '6px 8px')};
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: ${(props) => (props.isCompact ? '2px' : '3px')};
+  padding: ${(props) => (props.isCompact ? '4px 3px' : '6px 8px')};
   border: 1px solid #256d5a;
   border-radius: 6px;
   background: #dff5eb;
@@ -198,14 +198,39 @@ const ChordBlock = styled('div', {
   overflow: hidden;
 `;
 
-const ChordName = styled.div`
+const ChordName = styled('div', {
+  shouldForwardProp: (prop) => prop !== 'isCompact',
+})<{ isCompact: boolean }>`
   min-width: 0;
+  max-width: 100%;
   align-self: center;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.82rem;
+  font-size: ${(props) => (props.isCompact ? '0.68rem' : '0.82rem')};
   font-weight: 700;
+  line-height: ${(props) => (props.isCompact ? 1.05 : 1.2)};
+  text-align: ${(props) => (props.isCompact ? 'center' : 'left')};
+  ${(props) =>
+    props.isCompact
+      ? `
+        display: grid;
+        justify-items: center;
+        gap: 1px;
+      `
+      : `
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      `}
+`;
+
+const ChordNameLine = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'isSecondary',
+})<{ isSecondary?: boolean }>`
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  font-size: ${(props) => (props.isSecondary ? '0.94em' : '1em')};
 `;
 
 const ChordMeta = styled.span`
@@ -214,12 +239,16 @@ const ChordMeta = styled.span`
   font-weight: 600;
 `;
 
-const ChordInfo = styled.div`
+const ChordInfo = styled('div', {
+  shouldForwardProp: (prop) => prop !== 'isCompact',
+})<{ isCompact: boolean }>`
   min-width: 0;
-  display: flex;
+  min-height: 0;
+  display: ${(props) => (props.isCompact ? 'grid' : 'flex')};
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
+  justify-content: ${(props) => (props.isCompact ? 'center' : 'space-between')};
+  gap: ${(props) => (props.isCompact ? '0' : '4px')};
+  overflow: hidden;
 `;
 
 const ChordActions = styled.div`
@@ -752,14 +781,12 @@ export function TimelineGrid({
                     const displayDuration = getDisplayDuration(chord, totalBeats);
                     const maxDuration = getChordMaxDurationBeats(song, chord.id);
                     const isCompact = segmentDurationBeats === 1;
-                    const fullLabel =
-                      chordDisplayMode === 'roman'
-                        ? formatChordAsRomanNumeralLabel(chord.root, chord.quality, song.key, chord.bass)
-                        : formatSlashChordLabel(`${chord.root} ${chord.quality}`, chord.bass);
-                    const compactLabel =
-                      chordDisplayMode === 'roman'
-                        ? fullLabel
-                        : formatSlashChordLabel(chord.root, chord.bass);
+                    const chordLabel = formatTimelineChordLabel(
+                      chord,
+                      chordDisplayMode,
+                      song.key,
+                      segmentDurationBeats,
+                    );
 
                     return (
                       <ChordBlock
@@ -770,9 +797,18 @@ export function TimelineGrid({
                           width: segmentDurationBeats * BEAT_WIDTH,
                         }}
                       >
-                        <ChordInfo>
-                          <ChordName title={fullLabel}>
-                            {isCompact ? compactLabel : fullLabel}
+                        <ChordInfo isCompact={isCompact}>
+                          <ChordName isCompact={isCompact} title={chordLabel.full}>
+                            {isCompact ? (
+                              <>
+                                <ChordNameLine>{chordLabel.visible.primary}</ChordNameLine>
+                                {chordLabel.visible.secondary && (
+                                  <ChordNameLine isSecondary>{chordLabel.visible.secondary}</ChordNameLine>
+                                )}
+                              </>
+                            ) : (
+                              chordLabel.visible.primary
+                            )}
                           </ChordName>
                           {!isCompact && <ChordMeta>{displayDuration}拍</ChordMeta>}
                         </ChordInfo>
@@ -781,7 +817,7 @@ export function TimelineGrid({
                           <ChordActionButton
                             type="button"
                             title="1拍短く"
-                            aria-label={`${fullLabel}を1拍短く`}
+                            aria-label={`${chordLabel.full}を1拍短く`}
                             disabled={chord.durationBeats <= 1}
                             onClick={() => onChordResize(chord.id, chord.durationBeats - 1)}
                           >
@@ -790,7 +826,7 @@ export function TimelineGrid({
                           <ChordActionButton
                             type="button"
                             title="1拍長く"
-                            aria-label={`${fullLabel}を1拍長く`}
+                            aria-label={`${chordLabel.full}を1拍長く`}
                             disabled={chord.durationBeats >= maxDuration}
                             onClick={() => onChordResize(chord.id, chord.durationBeats + 1)}
                           >
@@ -799,7 +835,7 @@ export function TimelineGrid({
                           <ChordActionButton
                             type="button"
                             title="削除"
-                            aria-label={`${fullLabel}を削除`}
+                            aria-label={`${chordLabel.full}を削除`}
                             onClick={() => onChordDelete(chord.id)}
                           >
                             x
