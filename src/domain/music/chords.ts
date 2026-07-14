@@ -1,6 +1,11 @@
 import { CHORD_QUALITIES, NOTE_NAMES, SONG_KEY_MODES } from './types';
-import type { ChordQuality, NoteName, SongKeyMode } from './types';
-import { noteNameToPitchClass, normalizePitchClass, pitchClassToNoteName } from './pitchClass';
+import type { ChordQuality, NoteName, SongKey, SongKeyMode } from './types';
+import {
+  formatNoteNameInKey,
+  noteNameToPitchClass,
+  normalizePitchClass,
+  pitchClassToNoteName,
+} from './pitchClass';
 
 export { CHORD_QUALITIES, NOTE_NAMES };
 
@@ -36,7 +41,7 @@ export const getChordNotes = (root: NoteName, quality: ChordQuality): NoteName[]
 };
 
 /** Appends a slash-chord bass note to a chord label, e.g. `formatSlashChordLabel('C major', 'E')` -> `C major/E`. */
-export const formatSlashChordLabel = (label: string, bass?: NoteName): string =>
+export const formatSlashChordLabel = (label: string, bass?: string): string =>
   bass ? `${label}/${bass}` : label;
 
 // Compact chord-symbol suffixes (e.g. "C", "Am7", "F#m7") rather than the
@@ -54,3 +59,27 @@ const QUALITY_SYMBOLS: Record<ChordQuality, string> = {
 /** Formats a chord as a compact symbol, e.g. `formatChordSymbol('C', 'minor7', 'E')` -> `Cm7/E`. */
 export const formatChordSymbol = (root: NoteName, quality: ChordQuality, bass?: NoteName): string =>
   formatSlashChordLabel(`${root}${QUALITY_SYMBOLS[quality]}`, bass);
+
+/** Formats a chord quality label using the key's natural note spelling, e.g. `D♭ major7/A♭`. */
+export const formatChordNameInKey = (
+  root: NoteName,
+  quality: ChordQuality,
+  key: SongKey,
+  bass?: NoteName,
+): string =>
+  formatSlashChordLabel(
+    `${formatNoteNameInKey(root, key)} ${quality}`,
+    bass ? formatNoteNameInKey(bass, key) : undefined,
+  );
+
+/** Formats a compact chord symbol using the key's natural note spelling, e.g. `D♭maj7/A♭`. */
+export const formatChordSymbolInKey = (
+  root: NoteName,
+  quality: ChordQuality,
+  key: SongKey,
+  bass?: NoteName,
+): string =>
+  formatSlashChordLabel(
+    `${formatNoteNameInKey(root, key)}${QUALITY_SYMBOLS[quality]}`,
+    bass ? formatNoteNameInKey(bass, key) : undefined,
+  );

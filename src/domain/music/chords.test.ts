@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatChordNameInKey,
   formatChordSymbol,
+  formatChordSymbolInKey,
   formatSlashChordLabel,
   getChordNotes,
   isChordQuality,
@@ -59,5 +61,21 @@ describe('formatChordSymbol', () => {
   it('appends a bass note as a slash chord', () => {
     expect(formatChordSymbol('C', 'major', 'E')).toBe('C/E');
     expect(formatChordSymbol('D', 'major', 'F#')).toBe('D/F#');
+  });
+});
+
+describe('key-dependent chord formatting', () => {
+  const fMinorKey = { tonic: 'F', mode: 'minor' } as const;
+
+  it('formats F minor chord symbols with flat-side spellings', () => {
+    expect(formatChordSymbolInKey('A#', 'minor7', fMinorKey)).toBe('B♭m7');
+    expect(formatChordSymbolInKey('C#', 'major7', fMinorKey)).toBe('D♭maj7');
+    expect(formatChordSymbolInKey('D#', 'dominant7', fMinorKey)).toBe('E♭7');
+    expect(formatChordSymbolInKey('G#', 'major7', fMinorKey)).toBe('A♭maj7');
+  });
+
+  it('formats slash-chord root and bass with the same key spelling rule', () => {
+    expect(formatChordSymbolInKey('C#', 'major', fMinorKey, 'G#')).toBe('D♭/A♭');
+    expect(formatChordNameInKey('C#', 'major7', fMinorKey, 'G#')).toBe('D♭ major7/A♭');
   });
 });

@@ -1,4 +1,5 @@
-import { formatChordSymbol, formatSlashChordLabel } from './chords';
+import { formatChordSymbolInKey, formatSlashChordLabel } from './chords';
+import { formatNoteNameInKey } from './pitchClass';
 import { noteNameToPitchClass, normalizePitchClass } from './pitchClass';
 import { transposeNoteName } from './timeline';
 import type { ChordQuality, NoteName, SongKey } from './types';
@@ -166,7 +167,11 @@ export const formatChordAsRomanNumeralLabel = (
 ): string => {
   const roman = getRomanNumeralForChord(root, quality, key);
 
-  return formatSlashChordLabel(roman ?? formatChordSymbol(root, quality), bass);
+  if (roman) {
+    return formatSlashChordLabel(roman, bass ? formatNoteNameInKey(bass, key) : undefined);
+  }
+
+  return formatChordSymbolInKey(root, quality, key, bass);
 };
 
 export const CHORD_PROGRESSION_TEMPLATES: ChordProgressionTemplate[] = [

@@ -163,6 +163,14 @@ describe('formatChordAsRomanNumeralLabel', () => {
   it('falls back to the chord-symbol name for a non-diatonic root', () => {
     const key = { tonic: 'C', mode: 'major' } as const;
 
-    expect(formatChordAsRomanNumeralLabel('C#', 'major', key)).toBe('C#');
+    expect(formatChordAsRomanNumeralLabel('C#', 'major', key)).toBe('C♯');
+  });
+
+  it('uses key-dependent spellings for slash bass notes and fallbacks', () => {
+    const key = { tonic: 'F', mode: 'minor' } as const;
+
+    expect(formatChordAsRomanNumeralLabel('A#', 'minor7', key)).toBe('iv7');
+    expect(formatChordAsRomanNumeralLabel('A#', 'minor7', key, 'A#')).toBe('iv7/B♭');
+    expect(formatChordAsRomanNumeralLabel('F#', 'major', key)).toBe('G♭');
   });
 });

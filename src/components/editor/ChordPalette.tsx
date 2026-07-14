@@ -2,10 +2,11 @@ import { useMemo, useState, type FormEvent } from 'react';
 import styled from '@emotion/styled';
 import {
   CHORD_QUALITIES,
-  formatChordSymbol,
+  formatChordSymbolInKey,
   getChordNotes,
   NOTE_NAMES,
 } from '../../domain/music/chords';
+import { formatNoteNameInKey } from '../../domain/music/pitchClass';
 import {
   chordMatchesQuery,
   chordMatchesQueryExactly,
@@ -16,7 +17,7 @@ import { chords } from '../../data/chords';
 import { addRecentChord, loadRecentChords } from '../../services/recentChordsStorage';
 import type { RecentChordEntry } from '../../services/recentChordsStorage';
 import type { Chord } from '../../types/chord';
-import type { ChordQuality, NoteName } from '../../domain/music/types';
+import type { ChordQuality, NoteName, SongKey } from '../../domain/music/types';
 
 const MAX_SEARCH_RESULTS = 8;
 
@@ -195,6 +196,7 @@ const SelectedSummary = styled.p`
 interface ChordPaletteProps {
   selectedChord: Chord | null;
   selectedBass: NoteName | null;
+  songKey: SongKey;
   onChordSelect: (chord: Chord) => void;
   onBassChange: (bass: NoteName | null) => void;
 }
@@ -202,6 +204,7 @@ interface ChordPaletteProps {
 export function ChordPalette({
   selectedChord,
   selectedBass,
+  songKey,
   onChordSelect,
   onBassChange,
 }: ChordPaletteProps) {
@@ -302,7 +305,7 @@ export function ChordPalette({
                 type="button"
                 onClick={() => selectRecentChord(entry)}
               >
-                {formatChordSymbol(entry.root, entry.quality, entry.bass)}
+                {formatChordSymbolInKey(entry.root, entry.quality, songKey, entry.bass)}
               </ChordChip>
             ))}
           </ChipRow>
@@ -312,7 +315,7 @@ export function ChordPalette({
       <SearchForm onSubmit={handleSearchSubmit} role="search">
         <SearchInput
           aria-label="コード検索"
-          placeholder="例: C, Cm7, F#m7, C/E"
+          placeholder="例: C, Cm7, C/E"
           type="search"
           value={searchText}
           onChange={(event) => setSearchText(event.target.value)}
@@ -327,9 +330,10 @@ export function ChordPalette({
               type="button"
               onClick={() => selectSearchResult(chord)}
             >
-              {formatChordSymbol(
+              {formatChordSymbolInKey(
                 chord.root,
                 chord.type,
+                songKey,
                 parsedQuery.hasBassQuery ? (parsedQuery.bass ?? undefined) : undefined,
               )}
             </ChordButton>
@@ -351,7 +355,7 @@ export function ChordPalette({
               type="button"
               onClick={() => handleRootSelect(note)}
             >
-              {note}
+              {formatNoteNameInKey(note, songKey)}
             </RootButton>
           ))}
         </RootGrid>
@@ -386,7 +390,7 @@ export function ChordPalette({
           <option value="">なし</option>
           {NOTE_NAMES.map((note) => (
             <option key={note} value={note}>
-              {note}
+              {formatNoteNameInKey(note, songKey)}
             </option>
           ))}
         </BassSelect>
@@ -394,7 +398,12 @@ export function ChordPalette({
 
       {selectedChord && (
         <SelectedSummary>
-          選択中: {formatChordSymbol(selectedChord.root, selectedChord.type, selectedBass ?? undefined)}
+          選択中: {formatChordSymbolInKey(
+            selectedChord.root,
+            selectedChord.type,
+            songKey,
+            selectedBass ?? undefined,
+          )}
         </SelectedSummary>
       )}
     </PalettePanel>

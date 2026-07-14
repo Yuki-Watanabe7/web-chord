@@ -2,6 +2,7 @@ import styled from '@emotion/styled';
 import { useEffect, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
 import { formatTimelineChordLabel } from '../../domain/music/chordLabels';
+import { formatNoteNameInKey } from '../../domain/music/pitchClass';
 import {
   normalizeMeasureRange,
   getChordEndBeat,
@@ -14,7 +15,7 @@ import {
   sortChordEvents,
   sortMelodyNotes,
 } from '../../domain/music/timeline';
-import type { ChordDisplayMode, ChordEvent, MelodyNote, NoteName, Song } from '../../domain/music/types';
+import type { ChordDisplayMode, ChordEvent, MelodyNote, NoteName, Song, SongKey } from '../../domain/music/types';
 import type { MeasureRange } from '../../domain/music/timeline';
 
 const BEAT_WIDTH = 56;
@@ -556,7 +557,10 @@ const formatBeatCount = (beats: number) => {
   return Number.isInteger(rounded) ? `${rounded}` : `${rounded}`;
 };
 
-const formatPitch = ({ pitch, octave }: MelodyPitch) => `${pitch}${octave}`;
+const getPitchKey = ({ pitch, octave }: MelodyPitch) => `${pitch}${octave}`;
+
+const formatPitch = ({ pitch, octave }: MelodyPitch, key: SongKey) =>
+  `${formatNoteNameInKey(pitch, key)}${octave}`;
 
 const isSelectedBeatCount = (first: number, second: number) =>
   Math.abs(first - second) < BEAT_EPSILON;
@@ -996,14 +1000,14 @@ export function TimelineGrid({
                   {selectedNoteInRow && (
                     <MelodySelectionControls>
                       <MelodySelectionLabel>
-                        {formatPitch(selectedNoteInRow)} / {formatBeatCount(
+                        {formatPitch(selectedNoteInRow, song.key)} / {formatBeatCount(
                           getMelodyDisplayDuration(selectedNoteInRow, totalBeats),
                         )}拍
                       </MelodySelectionLabel>
                       <MelodyActionButton
                         type="button"
                         title="0.5拍短く"
-                        aria-label={`${formatPitch(selectedNoteInRow)}を0.5拍短く`}
+                        aria-label={`${formatPitch(selectedNoteInRow, song.key)}を0.5拍短く`}
                         disabled={
                           selectedNoteInRow.durationBeats <=
                           MIN_MELODY_DURATION_BEATS + BEAT_EPSILON
@@ -1020,7 +1024,7 @@ export function TimelineGrid({
                       <MelodyActionButton
                         type="button"
                         title="0.5拍長く"
-                        aria-label={`${formatPitch(selectedNoteInRow)}を0.5拍長く`}
+                        aria-label={`${formatPitch(selectedNoteInRow, song.key)}を0.5拍長く`}
                         disabled={
                           selectedNoteInRow.durationBeats >= selectedMelodyMaxDuration - BEAT_EPSILON
                         }
@@ -1036,7 +1040,7 @@ export function TimelineGrid({
                       <MelodyActionButton
                         type="button"
                         title="削除"
-                        aria-label={`${formatPitch(selectedNoteInRow)}を削除`}
+                        aria-label={`${formatPitch(selectedNoteInRow, song.key)}を削除`}
                         onClick={() => onMelodyNoteDelete(selectedNoteInRow.id)}
                       >
                         x
@@ -1056,7 +1060,7 @@ export function TimelineGrid({
                 >
                   <PitchLabels>
                     {MELODY_PITCHES.map((pitch) => (
-                      <PitchLabel key={formatPitch(pitch)}>{formatPitch(pitch)}</PitchLabel>
+                      <PitchLabel key={getPitchKey(pitch)}>{formatPitch(pitch, song.key)}</PitchLabel>
                     ))}
                   </PitchLabels>
 
@@ -1088,7 +1092,7 @@ export function TimelineGrid({
 
                         return (
                           <MelodyCell
-                            key={`${formatPitch(pitch)}-${beat}`}
+                            key={`${getPitchKey(pitch)}-${beat}`}
                             type="button"
                             isChordTone={isChordTone}
                             isOccupied={Boolean(occupiedNote)}
@@ -1097,7 +1101,7 @@ export function TimelineGrid({
                             aria-label={`${formatBeatPositionLabel(
                               beat,
                               song.timeSignature.beatsPerMeasure,
-                            )} ${formatPitch(pitch)}`}
+                            )} ${formatPitch(pitch, song.key)}`}
                             onClick={() => {
                               if (occupiedNote) {
                                 onMelodyNoteSelect(occupiedNote.id);
@@ -1124,8 +1128,8 @@ export function TimelineGrid({
                           type="button"
                           isSelected={isSelected}
                           isCompact={isCompact}
-                          title={`${formatPitch(note)} ${formatBeatCount(displayDuration)}拍`}
-                          aria-label={`${formatPitch(note)}を選択`}
+                          title={`${formatPitch(note, song.key)} ${formatBeatCount(displayDuration)}拍`}
+                          aria-label={`${formatPitch(note, song.key)}を選択`}
                           style={{
                             left: (segmentStartBeat - row.startBeat) * BEAT_WIDTH + 2,
                             top: pitchIndex * MELODY_ROW_HEIGHT + 2,
@@ -1137,7 +1141,7 @@ export function TimelineGrid({
                           }}
                         >
                           <MelodyNoteText>
-                            {isCompact ? note.pitch : formatPitch(note)}
+                            {isCompact ? formatNoteNameInKey(note.pitch, song.key) : formatPitch(note, song.key)}
                           </MelodyNoteText>
                           {!isCompact && (
                             <MelodyNoteText>

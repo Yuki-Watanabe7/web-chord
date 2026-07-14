@@ -1,6 +1,7 @@
 import styled from '@emotion/styled';
 import { MAX_TOTAL_MEASURES, MIN_TOTAL_MEASURES, formatTimeSignature } from '../../domain/music/timeline';
 import { NOTE_NAMES } from '../../domain/music/chords';
+import { formatKeyTonicName } from '../../domain/music/pitchClass';
 import type { ChordDisplayMode, SongKey, TimeSignature } from '../../domain/music/types';
 
 const ControlsContainer = styled.div`
@@ -219,7 +220,7 @@ export function SongControls({
         >
           {NOTE_NAMES.map((tonic) => (
             <option key={tonic} value={tonic}>
-              {tonic}
+              {formatKeyTonicName(tonic, songKey.mode)}
             </option>
           ))}
         </KeySelect>
