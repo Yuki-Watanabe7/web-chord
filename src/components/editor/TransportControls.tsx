@@ -5,7 +5,15 @@ const ControlPanel = styled.div`
   bottom: 20px;
   right: 20px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
+
+  @media (max-width: 620px) {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+  }
 `;
 
 interface TransportControlsProps {
@@ -14,6 +22,7 @@ interface TransportControlsProps {
   onClear: () => void;
   onSave: () => void;
   onExportMidi: () => void;
+  onExportJson: () => void;
 }
 
 export function TransportControls({
@@ -22,6 +31,7 @@ export function TransportControls({
   onClear,
   onSave,
   onExportMidi,
+  onExportJson,
 }: TransportControlsProps) {
   return (
     <ControlPanel>
@@ -31,6 +41,7 @@ export function TransportControls({
       <button onClick={onClear}>クリア</button>
       <button onClick={onSave}>保存</button>
       <button onClick={onExportMidi}>MIDI書き出し</button>
+      <button onClick={onExportJson}>JSON書き出し</button>
     </ControlPanel>
   );
 }
