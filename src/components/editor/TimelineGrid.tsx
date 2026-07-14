@@ -9,6 +9,8 @@ import {
   getMelodyNoteEndBeat,
   getMelodyNoteMaxDurationBeats,
   getTotalBeats,
+  MELODY_BEAT_QUANTUM,
+  MIN_MELODY_DURATION_BEATS,
   sortChordEvents,
   sortMelodyNotes,
 } from '../../domain/music/timeline';
@@ -16,11 +18,14 @@ import type { ChordDisplayMode, ChordEvent, MelodyNote, NoteName, Song } from '.
 import type { MeasureRange } from '../../domain/music/timeline';
 
 const BEAT_WIDTH = 56;
+const MELODY_CELL_WIDTH = BEAT_WIDTH * MELODY_BEAT_QUANTUM;
 const PITCH_LABEL_WIDTH = 44;
 const MELODY_ROW_HEIGHT = 24;
 const MELODY_LOW_OCTAVE = 3;
 const MELODY_HIGH_OCTAVE = 6;
 const MELODY_LANE_MAX_HEIGHT = 360;
+const MELODY_INPUT_DURATIONS = [0.5, 1, 1.5, 2, 3, 4];
+const BEAT_EPSILON = 0.000001;
 
 interface MelodyPitch {
   pitch: NoteName;
@@ -314,8 +319,16 @@ const MelodyHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 10px;
+`;
+
+const MelodyHeaderMain = styled.div`
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 `;
 
 const MelodyTitle = styled.div`
@@ -324,9 +337,42 @@ const MelodyTitle = styled.div`
   font-weight: 800;
 `;
 
+const MelodyDurationControls = styled.div`
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+`;
+
+const MelodyDurationGroup = styled.div`
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+`;
+
+const MelodyDurationButton = styled('button', {
+  shouldForwardProp: (prop) => prop !== 'isSelected',
+})<{ isSelected: boolean }>`
+  min-width: 38px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid ${(props) => (props.isSelected ? '#256d5a' : '#cbd5e1')};
+  border-radius: 5px;
+  background: ${(props) => (props.isSelected ? '#dff5eb' : '#ffffff')};
+  color: ${(props) => (props.isSelected ? '#12382f' : '#334155')};
+  font-size: 0.72rem;
+  font-weight: 800;
+
+  &:hover {
+    background: ${(props) => (props.isSelected ? '#c9ecd9' : '#e7eef7')};
+  }
+`;
+
 const MelodySelectionControls = styled.div`
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   min-height: 28px;
 `;
@@ -395,15 +441,24 @@ const MelodyCells = styled.div`
 
 const MelodyCell = styled('button', {
   shouldForwardProp: (prop) =>
-    prop !== 'isChordTone' && prop !== 'isOccupied' && prop !== 'isMeasureStart',
-})<{ isChordTone: boolean; isOccupied: boolean; isMeasureStart: boolean }>`
-  width: ${BEAT_WIDTH}px;
+    prop !== 'isChordTone' &&
+    prop !== 'isOccupied' &&
+    prop !== 'isMeasureStart' &&
+    prop !== 'isBeatStart',
+})<{ isChordTone: boolean; isOccupied: boolean; isMeasureStart: boolean; isBeatStart: boolean }>`
+  width: ${MELODY_CELL_WIDTH}px;
   height: ${MELODY_ROW_HEIGHT}px;
   padding: 0;
   border: 0;
-  border-right: 1px solid #e2e8f0;
+  border-right: 1px solid #eef2f7;
   border-bottom: 1px solid #e2e8f0;
-  border-left: ${(props) => (props.isMeasureStart ? '2px solid #8aa0b8' : '0')};
+  border-left: ${(props) => {
+    if (props.isMeasureStart) {
+      return '2px solid #8aa0b8';
+    }
+
+    return props.isBeatStart ? '1px solid #b8c5d4' : '0';
+  }};
   border-radius: 0;
   background: ${(props) => {
     if (props.isOccupied) {
@@ -461,6 +516,7 @@ interface TimelineGridProps {
   measuresPerRow: number;
   chordDisplayMode: ChordDisplayMode;
   selectedMelodyNoteId: string | null;
+  selectedMelodyDurationBeats: number;
   selectedMeasureRange: MeasureRange;
   canDuplicateMeasureRange: boolean;
   canPasteMeasureRange: boolean;
@@ -471,6 +527,7 @@ interface TimelineGridProps {
   onCopyMeasureRange: () => void;
   onPasteMeasureRange: () => void;
   onDuplicateMeasureRange: () => void;
+  onMelodyDurationChange: (durationBeats: number) => void;
   onMelodyCellClick: (startBeat: number, pitch: NoteName, octave: number) => void;
   onMelodyNoteSelect: (noteId: string) => void;
   onMelodyNoteDelete: (noteId: string) => void;
@@ -488,9 +545,38 @@ const getDisplayDuration = (chord: ChordEvent, totalBeats: number) =>
   Math.max(1, Math.min(chord.durationBeats, totalBeats - chord.startBeat));
 
 const getMelodyDisplayDuration = (note: MelodyNote, totalBeats: number) =>
-  Math.max(1, Math.min(note.durationBeats, totalBeats - note.startBeat));
+  Math.max(
+    MIN_MELODY_DURATION_BEATS,
+    Math.min(note.durationBeats, totalBeats - note.startBeat),
+  );
+
+const formatBeatCount = (beats: number) => {
+  const rounded = Number(beats.toFixed(2));
+
+  return Number.isInteger(rounded) ? `${rounded}` : `${rounded}`;
+};
 
 const formatPitch = ({ pitch, octave }: MelodyPitch) => `${pitch}${octave}`;
+
+const isSelectedBeatCount = (first: number, second: number) =>
+  Math.abs(first - second) < BEAT_EPSILON;
+
+const isWholeBeat = (beat: number) => Math.abs(beat - Math.round(beat)) < BEAT_EPSILON;
+
+const getBeatOffsetInMeasure = (beat: number, beatsPerMeasure: number) =>
+  beat - Math.floor(beat / beatsPerMeasure) * beatsPerMeasure;
+
+const isMeasureStartBeat = (beat: number, beatsPerMeasure: number) =>
+  Math.abs(getBeatOffsetInMeasure(beat, beatsPerMeasure)) < BEAT_EPSILON;
+
+const formatBeatPositionLabel = (beat: number, beatsPerMeasure: number) => {
+  const measureNumber = Math.floor(beat / beatsPerMeasure) + 1;
+  const beatOffset = getBeatOffsetInMeasure(beat, beatsPerMeasure);
+  const beatNumber = Math.floor(beatOffset) + 1;
+  const subdivisionLabel = isWholeBeat(beat) ? '' : 'の裏';
+
+  return `${measureNumber}小節 ${beatNumber}拍目${subdivisionLabel}`;
+};
 
 const isSamePitch = (note: MelodyNote, pitch: MelodyPitch) =>
   note.pitch === pitch.pitch && note.octave === pitch.octave;
@@ -554,6 +640,7 @@ export function TimelineGrid({
   measuresPerRow,
   chordDisplayMode,
   selectedMelodyNoteId,
+  selectedMelodyDurationBeats,
   selectedMeasureRange,
   canDuplicateMeasureRange,
   canPasteMeasureRange,
@@ -564,6 +651,7 @@ export function TimelineGrid({
   onCopyMeasureRange,
   onPasteMeasureRange,
   onDuplicateMeasureRange,
+  onMelodyDurationChange,
   onMelodyCellClick,
   onMelodyNoteSelect,
   onMelodyNoteDelete,
@@ -585,7 +673,9 @@ export function TimelineGrid({
       ? visibleMelodyNotes.find((note) => note.id === selectedMelodyNoteId) ?? null
       : null;
   const selectedMelodyMaxDuration =
-    selectedMelodyNote ? getMelodyNoteMaxDurationBeats(song, selectedMelodyNote.id) : 1;
+    selectedMelodyNote
+      ? getMelodyNoteMaxDurationBeats(song, selectedMelodyNote.id)
+      : MIN_MELODY_DURATION_BEATS;
 
   useEffect(() => {
     if (dragStartMeasure === null) {
@@ -705,6 +795,10 @@ export function TimelineGrid({
             const beats = Array.from(
               { length: row.beatCount },
               (_, beatOffset) => row.startBeat + beatOffset,
+            );
+            const melodyCellBeats = Array.from(
+              { length: Math.round(row.beatCount / MELODY_BEAT_QUANTUM) },
+              (_, beatOffset) => row.startBeat + beatOffset * MELODY_BEAT_QUANTUM,
             );
             const measureIndexes = Array.from(
               { length: row.measureCount },
@@ -871,21 +965,53 @@ export function TimelineGrid({
                 </BeatRow>
 
                 <MelodyHeader>
-                  <MelodyTitle>メロディ</MelodyTitle>
+                  <MelodyHeaderMain>
+                    <MelodyTitle>メロディ</MelodyTitle>
+                    <MelodyDurationControls>
+                      <MelodySelectionLabel>入力する長さ</MelodySelectionLabel>
+                      <MelodyDurationGroup role="group" aria-label="入力するメロディの長さ">
+                        {MELODY_INPUT_DURATIONS.map((duration) => {
+                          const isSelected = isSelectedBeatCount(
+                            duration,
+                            selectedMelodyDurationBeats,
+                          );
+
+                          return (
+                            <MelodyDurationButton
+                              key={duration}
+                              type="button"
+                              isSelected={isSelected}
+                              aria-pressed={isSelected}
+                              aria-label={`${formatBeatCount(duration)}拍で入力`}
+                              title={`${formatBeatCount(duration)}拍で入力`}
+                              onClick={() => onMelodyDurationChange(duration)}
+                            >
+                              {formatBeatCount(duration)}拍
+                            </MelodyDurationButton>
+                          );
+                        })}
+                      </MelodyDurationGroup>
+                    </MelodyDurationControls>
+                  </MelodyHeaderMain>
                   {selectedNoteInRow && (
                     <MelodySelectionControls>
                       <MelodySelectionLabel>
-                        {formatPitch(selectedNoteInRow)} / {getMelodyDisplayDuration(selectedNoteInRow, totalBeats)}拍
+                        {formatPitch(selectedNoteInRow)} / {formatBeatCount(
+                          getMelodyDisplayDuration(selectedNoteInRow, totalBeats),
+                        )}拍
                       </MelodySelectionLabel>
                       <MelodyActionButton
                         type="button"
-                        title="1拍短く"
-                        aria-label={`${formatPitch(selectedNoteInRow)}を1拍短く`}
-                        disabled={selectedNoteInRow.durationBeats <= 1}
+                        title="0.5拍短く"
+                        aria-label={`${formatPitch(selectedNoteInRow)}を0.5拍短く`}
+                        disabled={
+                          selectedNoteInRow.durationBeats <=
+                          MIN_MELODY_DURATION_BEATS + BEAT_EPSILON
+                        }
                         onClick={() =>
                           onMelodyNoteResize(
                             selectedNoteInRow.id,
-                            selectedNoteInRow.durationBeats - 1,
+                            selectedNoteInRow.durationBeats - MELODY_BEAT_QUANTUM,
                           )
                         }
                       >
@@ -893,13 +1019,15 @@ export function TimelineGrid({
                       </MelodyActionButton>
                       <MelodyActionButton
                         type="button"
-                        title="1拍長く"
-                        aria-label={`${formatPitch(selectedNoteInRow)}を1拍長く`}
-                        disabled={selectedNoteInRow.durationBeats >= selectedMelodyMaxDuration}
+                        title="0.5拍長く"
+                        aria-label={`${formatPitch(selectedNoteInRow)}を0.5拍長く`}
+                        disabled={
+                          selectedNoteInRow.durationBeats >= selectedMelodyMaxDuration - BEAT_EPSILON
+                        }
                         onClick={() =>
                           onMelodyNoteResize(
                             selectedNoteInRow.id,
-                            selectedNoteInRow.durationBeats + 1,
+                            selectedNoteInRow.durationBeats + MELODY_BEAT_QUANTUM,
                           )
                         }
                       >
@@ -934,13 +1062,17 @@ export function TimelineGrid({
 
                   <MelodyCells
                     style={{
-                      gridTemplateColumns: `repeat(${row.beatCount}, ${BEAT_WIDTH}px)`,
+                      gridTemplateColumns: `repeat(${melodyCellBeats.length}, ${MELODY_CELL_WIDTH}px)`,
                       gridTemplateRows: `repeat(${MELODY_PITCHES.length}, ${MELODY_ROW_HEIGHT}px)`,
                     }}
                   >
                     {MELODY_PITCHES.flatMap((pitch) =>
-                      beats.map((beat) => {
-                        const isMeasureStart = beat % song.timeSignature.beatsPerMeasure === 0;
+                      melodyCellBeats.map((beat) => {
+                        const isMeasureStart = isMeasureStartBeat(
+                          beat,
+                          song.timeSignature.beatsPerMeasure,
+                        );
+                        const isBeatStart = isWholeBeat(beat);
                         const activeChord = visibleChords.find(
                           (chord) => beat >= chord.startBeat && beat < getChordEndBeat(chord),
                         );
@@ -961,9 +1093,11 @@ export function TimelineGrid({
                             isChordTone={isChordTone}
                             isOccupied={Boolean(occupiedNote)}
                             isMeasureStart={isMeasureStart}
-                            aria-label={`${Math.floor(beat / song.timeSignature.beatsPerMeasure) + 1}小節 ${
-                              (beat % song.timeSignature.beatsPerMeasure) + 1
-                            }拍目 ${formatPitch(pitch)}`}
+                            isBeatStart={isBeatStart}
+                            aria-label={`${formatBeatPositionLabel(
+                              beat,
+                              song.timeSignature.beatsPerMeasure,
+                            )} ${formatPitch(pitch)}`}
                             onClick={() => {
                               if (occupiedNote) {
                                 onMelodyNoteSelect(occupiedNote.id);
@@ -980,8 +1114,9 @@ export function TimelineGrid({
 
                   <MelodyNotesLayer>
                     {melodySegments.map(({ note, pitchIndex, segmentStartBeat, segmentDurationBeats }) => {
-                      const isCompact = segmentDurationBeats === 1;
+                      const isCompact = segmentDurationBeats <= 1;
                       const isSelected = note.id === selectedMelodyNoteId;
+                      const displayDuration = getMelodyDisplayDuration(note, totalBeats);
 
                       return (
                         <MelodyNoteBlock
@@ -989,12 +1124,12 @@ export function TimelineGrid({
                           type="button"
                           isSelected={isSelected}
                           isCompact={isCompact}
-                          title={`${formatPitch(note)} ${getMelodyDisplayDuration(note, totalBeats)}拍`}
+                          title={`${formatPitch(note)} ${formatBeatCount(displayDuration)}拍`}
                           aria-label={`${formatPitch(note)}を選択`}
                           style={{
                             left: (segmentStartBeat - row.startBeat) * BEAT_WIDTH + 2,
                             top: pitchIndex * MELODY_ROW_HEIGHT + 2,
-                            width: Math.max(28, segmentDurationBeats * BEAT_WIDTH - 4),
+                            width: Math.max(24, segmentDurationBeats * BEAT_WIDTH - 4),
                           }}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -1006,7 +1141,7 @@ export function TimelineGrid({
                           </MelodyNoteText>
                           {!isCompact && (
                             <MelodyNoteText>
-                              {getMelodyDisplayDuration(note, totalBeats)}拍
+                              {formatBeatCount(displayDuration)}拍
                             </MelodyNoteText>
                           )}
                         </MelodyNoteBlock>

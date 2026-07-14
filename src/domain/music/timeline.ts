@@ -23,6 +23,8 @@ export const DEFAULT_SONG_KEY: SongKey = {
   tonic: 'C',
   mode: 'major',
 };
+export const MELODY_BEAT_QUANTUM = 0.5;
+export const MIN_MELODY_DURATION_BEATS = MELODY_BEAT_QUANTUM;
 
 export interface ChordGridBeat {
   chord: ChordDefinition | null;
@@ -72,6 +74,28 @@ export const createMusicId = (prefix: string) => {
 };
 
 const isPositiveInteger = (value: number) => Number.isInteger(value) && value > 0;
+
+const roundBeat = (value: number) => Number(value.toFixed(6));
+
+export const quantizeBeat = (value: number, quantum = MELODY_BEAT_QUANTUM) => {
+  const safeQuantum = Number.isFinite(quantum) && quantum > 0 ? quantum : 1;
+
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return roundBeat(Math.round(value / safeQuantum) * safeQuantum);
+};
+
+const quantizeBeatDown = (value: number, quantum = MELODY_BEAT_QUANTUM) => {
+  const safeQuantum = Number.isFinite(quantum) && quantum > 0 ? quantum : 1;
+
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return roundBeat(Math.floor(value / safeQuantum) * safeQuantum);
+};
 
 export const parseTimeSignature = (value: unknown): TimeSignature => {
   if (typeof value === 'string') {
@@ -704,6 +728,17 @@ export const duplicateMeasureRangeToNext = (song: Song, range: MeasureRange): So
 const clampBeatPosition = (startBeat: number, totalBeats: number) =>
   Math.max(0, Math.min(Math.floor(startBeat), Math.max(0, totalBeats - 1)));
 
+const clampQuantizedBeatPosition = (
+  startBeat: number,
+  totalBeats: number,
+  quantum = MELODY_BEAT_QUANTUM,
+) => {
+  const maxStartBeat = Math.max(0, totalBeats - quantum);
+  const quantizedStartBeat = quantizeBeat(startBeat, quantum);
+
+  return Math.max(0, Math.min(quantizedStartBeat, maxStartBeat));
+};
+
 export const getChordMaxDurationBeats = (song: Song, chordId: string) => {
   const targetChord = song.chords.find((chord) => chord.id === chordId);
 
@@ -863,7 +898,7 @@ export const getMelodyNoteMaxDurationBeats = (song: Song, noteId: string) => {
   const targetNote = song.melodyNotes.find((note) => note.id === noteId);
 
   if (!targetNote) {
-    return 1;
+    return MIN_MELODY_DURATION_BEATS;
   }
 
   const totalBeats = getTotalBeats(song);
@@ -874,8 +909,9 @@ export const getMelodyNoteMaxDurationBeats = (song: Song, noteId: string) => {
       note.startBeat > targetNote.startBeat,
   );
   const nextBoundary = nextNote ? nextNote.startBeat : totalBeats;
+  const maxDuration = quantizeBeatDown(nextBoundary - targetNote.startBeat);
 
-  return Math.max(1, Math.floor(nextBoundary - targetNote.startBeat));
+  return Math.max(MIN_MELODY_DURATION_BEATS, maxDuration);
 };
 
 export const insertMelodyNoteInSong = (
@@ -884,6 +920,7 @@ export const insertMelodyNoteInSong = (
   pitch: NoteName,
   octave: number,
   noteId = createMusicId('melody'),
+  durationBeats = 1,
 ): Song => {
   const totalBeats = getTotalBeats(song);
 
@@ -891,14 +928,31 @@ export const insertMelodyNoteInSong = (
     return song;
   }
 
-  const nextStartBeat = clampBeatPosition(startBeat, totalBeats);
+  const nextStartBeat = clampQuantizedBeatPosition(startBeat, totalBeats);
   const nextOctave = Math.max(0, Math.min(8, Math.round(octave)));
+  const nextSamePitchNote = sortMelodyNotes(song.melodyNotes).find(
+    (note) =>
+      note.pitch === pitch &&
+      note.octave === nextOctave &&
+      note.startBeat > nextStartBeat,
+  );
+  const nextBoundary = nextSamePitchNote ? nextSamePitchNote.startBeat : totalBeats;
+  const maxDuration = quantizeBeatDown(nextBoundary - nextStartBeat);
+
+  if (maxDuration < MIN_MELODY_DURATION_BEATS) {
+    return song;
+  }
+
+  const nextDuration = Math.min(
+    Math.max(MIN_MELODY_DURATION_BEATS, quantizeBeat(durationBeats)),
+    maxDuration,
+  );
   const insertedNote: MelodyNote = {
     id: noteId,
     pitch,
     octave: nextOctave,
     startBeat: nextStartBeat,
-    durationBeats: 1,
+    durationBeats: nextDuration,
     velocity: 0.8,
   };
 
@@ -915,9 +969,15 @@ export const insertMelodyNoteInSong = (
       existingNote.startBeat < nextStartBeat &&
       getMelodyNoteEndBeat(existingNote) > nextStartBeat
     ) {
+      const nextExistingDuration = quantizeBeatDown(nextStartBeat - existingNote.startBeat);
+
+      if (nextExistingDuration < MIN_MELODY_DURATION_BEATS) {
+        return [];
+      }
+
       return [{
         ...existingNote,
-        durationBeats: Math.max(1, nextStartBeat - existingNote.startBeat),
+        durationBeats: nextExistingDuration,
       }];
     }
 
@@ -947,7 +1007,10 @@ export const resizeMelodyNoteInSong = (
   }
 
   const maxDuration = getMelodyNoteMaxDurationBeats(song, noteId);
-  const nextDuration = Math.max(1, Math.min(Math.round(durationBeats), maxDuration));
+  const nextDuration = Math.max(
+    MIN_MELODY_DURATION_BEATS,
+    Math.min(quantizeBeat(durationBeats), maxDuration),
+  );
 
   return {
     ...song,

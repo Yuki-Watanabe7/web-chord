@@ -14,6 +14,7 @@ import {
   normalizeMeasureRange,
   normalizeTotalMeasures,
   pasteMeasureRangeClipboard,
+  quantizeBeat,
   resizeChordInSong,
   resizeMelodyNoteInSong,
   transposeChordEvent,
@@ -217,6 +218,177 @@ describe('insertChordProgressionInSong', () => {
   });
 });
 
+describe('melody half-beat editing', () => {
+  it('quantizes arbitrary beat values to the nearest half beat', () => {
+    expect(quantizeBeat(0.24)).toBe(0);
+    expect(quantizeBeat(0.26)).toBe(0.5);
+    expect(quantizeBeat(1.24)).toBe(1);
+    expect(quantizeBeat(1.26)).toBe(1.5);
+  });
+
+  it('inserts a 0.5 beat note at a 0.5 beat position', () => {
+    const song = createEmptySong({ totalMeasures: 1 });
+    const next = insertMelodyNoteInSong(song, 0.5, 'E', 4, 'melody-1', 0.5);
+
+    expect(next.melodyNotes).toHaveLength(1);
+    expect(next.melodyNotes[0]).toMatchObject({
+      id: 'melody-1',
+      startBeat: 0.5,
+      durationBeats: 0.5,
+    });
+  });
+
+  it('inserts a 1.5 beat note at a 0.5 beat position', () => {
+    const song = createEmptySong({ totalMeasures: 1 });
+    const next = insertMelodyNoteInSong(song, 0.5, 'E', 4, 'melody-1', 1.5);
+
+    expect(next.melodyNotes[0]).toMatchObject({
+      startBeat: 0.5,
+      durationBeats: 1.5,
+    });
+  });
+
+  it('normalizes inserted start and duration values to half beats', () => {
+    const song = createEmptySong({ totalMeasures: 1 });
+    const next = insertMelodyNoteInSong(song, 0.74, 'E', 4, 'melody-1', 1.26);
+
+    expect(next.melodyNotes[0]).toMatchObject({
+      startBeat: 0.5,
+      durationBeats: 1.5,
+    });
+  });
+
+  it('shortens an inserted note that would pass the end of the song', () => {
+    const song = createEmptySong({ totalMeasures: 1 });
+    const next = insertMelodyNoteInSong(song, 3.5, 'E', 4, 'melody-1', 2);
+
+    expect(next.melodyNotes[0]).toMatchObject({
+      startBeat: 3.5,
+      durationBeats: 0.5,
+    });
+  });
+
+  it('trims previous same-pitch notes and does not cross the next same-pitch note', () => {
+    const song = createEmptySong({
+      totalMeasures: 1,
+      melodyNotes: [
+        {
+          id: 'previous',
+          pitch: 'E',
+          octave: 4,
+          startBeat: 0,
+          durationBeats: 2,
+          velocity: 0.8,
+        },
+        {
+          id: 'next',
+          pitch: 'E',
+          octave: 4,
+          startBeat: 2,
+          durationBeats: 1,
+          velocity: 0.8,
+        },
+      ],
+    });
+
+    const next = insertMelodyNoteInSong(song, 0.5, 'E', 4, 'inserted', 3);
+
+    expect(next.melodyNotes.map((note) => ({
+      id: note.id,
+      startBeat: note.startBeat,
+      durationBeats: note.durationBeats,
+    }))).toEqual([
+      { id: 'previous', startBeat: 0, durationBeats: 0.5 },
+      { id: 'inserted', startBeat: 0.5, durationBeats: 1.5 },
+      { id: 'next', startBeat: 2, durationBeats: 1 },
+    ]);
+  });
+
+  it('resizes melody notes in 0.5 beat steps', () => {
+    const song = insertMelodyNoteInSong(
+      createEmptySong({ totalMeasures: 1 }),
+      0,
+      'E',
+      4,
+      'melody-1',
+      0.5,
+    );
+    const oneBeat = resizeMelodyNoteInSong(song, 'melody-1', 1);
+    const oneAndHalfBeats = resizeMelodyNoteInSong(oneBeat, 'melody-1', 1.5);
+
+    expect(song.melodyNotes[0].durationBeats).toBe(0.5);
+    expect(oneBeat.melodyNotes[0].durationBeats).toBe(1);
+    expect(oneAndHalfBeats.melodyNotes[0].durationBeats).toBe(1.5);
+  });
+
+  it('does not resize melody notes below 0.5 beats', () => {
+    const song = insertMelodyNoteInSong(
+      createEmptySong({ totalMeasures: 1 }),
+      0,
+      'E',
+      4,
+      'melody-1',
+      0.5,
+    );
+    const resized = resizeMelodyNoteInSong(song, 'melody-1', 0.25);
+
+    expect(resized.melodyNotes[0].durationBeats).toBe(0.5);
+  });
+
+  it('does not resize a melody note beyond the next same-pitch note', () => {
+    const song = createEmptySong({
+      totalMeasures: 1,
+      melodyNotes: [
+        {
+          id: 'first',
+          pitch: 'E',
+          octave: 4,
+          startBeat: 0,
+          durationBeats: 0.5,
+          velocity: 0.8,
+        },
+        {
+          id: 'second',
+          pitch: 'E',
+          octave: 4,
+          startBeat: 1.5,
+          durationBeats: 0.5,
+          velocity: 0.8,
+        },
+      ],
+    });
+
+    const resized = resizeMelodyNoteInSong(song, 'first', 4);
+
+    expect(resized.melodyNotes[0].durationBeats).toBe(1.5);
+  });
+
+  it('preserves fractional melody timing when copying, pasting, and duplicating measures', () => {
+    const song = insertMelodyNoteInSong(
+      createEmptySong({ totalMeasures: 3 }),
+      0.5,
+      'E',
+      4,
+      'melody-1',
+      1.5,
+    );
+    const clipboard = copyMeasureRangeFromSong(song, { startMeasure: 0, measureCount: 1 });
+    const pasted = pasteMeasureRangeClipboard(song, clipboard, 1);
+    const duplicated = duplicateMeasureRangeToNext(song, { startMeasure: 0, measureCount: 1 });
+
+    expect(clipboard.melodyNotes[0]).toMatchObject({
+      relativeStartBeat: 0.5,
+      durationBeats: 1.5,
+    });
+    expect(pasted.melodyNotes.find((note) => note.startBeat === 4.5)).toMatchObject({
+      durationBeats: 1.5,
+    });
+    expect(duplicated.melodyNotes.find((note) => note.startBeat === 4.5)).toMatchObject({
+      durationBeats: 1.5,
+    });
+  });
+});
+
 describe('normalizeTotalMeasures', () => {
   it('clamps below the minimum up to 1', () => {
     expect(normalizeTotalMeasures(0)).toBe(1);
@@ -281,6 +453,21 @@ describe('changeSongTotalMeasures (shrinking)', () => {
     expect(shrunk.totalMeasures).toBe(4);
     expect(shrunk.chords[0]).toMatchObject({ startBeat: 12, durationBeats: 4 });
     expect(shrunk.melodyNotes[0]).toMatchObject({ startBeat: 12, durationBeats: 4 });
+  });
+
+  it('truncates fractional melody notes at the new end boundary', () => {
+    const song = insertMelodyNoteInSong(
+      createEmptySong({ totalMeasures: 2, timeSignature: { beatsPerMeasure: 4, beatUnit: 4 } }),
+      3.5,
+      'E',
+      4,
+      'melody-1',
+      1.5,
+    );
+
+    const shrunk = changeSongTotalMeasures(song, 1);
+
+    expect(shrunk.melodyNotes[0]).toMatchObject({ startBeat: 3.5, durationBeats: 0.5 });
   });
 
   it('leaves events that already fit entirely before the new end untouched', () => {
