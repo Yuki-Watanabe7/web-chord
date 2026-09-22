@@ -27,12 +27,73 @@ export const CHORD_QUALITIES = [
 
 export type ChordQuality = (typeof CHORD_QUALITIES)[number];
 
+/** A letter name and its written accidental, kept independently from its pitch class. */
+export type ChordStep = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
+
+export interface ChordPitch {
+  step: ChordStep;
+  /** Semitone offset from the natural letter: -2 = ♭♭, -1 = ♭, 0 = natural, 1 = ♯. */
+  alter: -2 | -1 | 0 | 1 | 2;
+}
+
+/**
+ * The MusicXML-compatible core chord kind. Extensions and degree changes are
+ * deliberately separate so, for example, `C7(♭9)` does not collapse into a
+ * single lossy quality string.
+ */
+export const CHORD_KINDS = [
+  'major',
+  'minor',
+  'diminished',
+  'augmented',
+  'dominant',
+  'suspended-second',
+  'suspended-fourth',
+  'half-diminished',
+  'none',
+  'other',
+] as const;
+
+export type ChordKind = (typeof CHORD_KINDS)[number];
+
+export type ChordExtension = 6 | 7 | 9 | 11 | 13;
+
+/** Mirrors MusicXML's degree-value, degree-alter, and degree-type fields. */
+export interface ChordDegree {
+  value: number;
+  alter: number;
+  type: 'add' | 'alter' | 'subtract';
+}
+
+export interface ChordParseWarning {
+  code: 'empty-symbol' | 'missing-root' | 'invalid-bass' | 'unsupported-token' | 'ambiguous-symbol';
+  message: string;
+}
+
+/**
+ * A lossless chord-symbol representation used by imported scores. `raw` is
+ * the exact score text (apart from surrounding whitespace); `normalized`
+ * normalizes ASCII and music accidental glyphs for parsing/comparison.
+ */
+export interface ChordSymbol {
+  raw: string;
+  normalized: string;
+  root?: ChordPitch;
+  kind: ChordKind;
+  extension?: ChordExtension;
+  degrees: ChordDegree[];
+  bass?: ChordPitch;
+  warnings: ChordParseWarning[];
+}
+
 export interface ChordDefinition {
   root: NoteName;
   type: ChordQuality;
   notes: NoteName[];
   /** Optional slash-chord bass note (e.g. the `E` in `C/E`). Undefined means root-position. */
   bass?: NoteName;
+  /** Preserves the written score symbol and its structured MusicXML-style meaning. */
+  chordSymbol?: ChordSymbol;
 }
 
 export interface TimeSignature {
@@ -99,6 +160,11 @@ export interface ChordEvent {
   quality: ChordQuality;
   /** Optional slash-chord bass note (e.g. the `E` in `C/E`). Undefined means root-position. */
   bass?: NoteName;
+  /**
+   * Structured score notation. Legacy root/quality/bass remain for editor
+   * compatibility; `none` and `other` use this field as their source of truth.
+   */
+  chordSymbol?: ChordSymbol;
   /** Integer tick position. This is the persisted timing value. */
   startTick: number;
   /** Integer tick duration. This is the persisted timing value. */

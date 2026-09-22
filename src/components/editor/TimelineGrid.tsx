@@ -1,10 +1,11 @@
 import styled from '@emotion/styled';
 import { useEffect, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { getChordNotes, NOTE_NAMES } from '../../domain/music/chords';
+import { NOTE_NAMES } from '../../domain/music/chords';
 import { formatTimelineChordLabel } from '../../domain/music/chordLabels';
 import { formatNoteNameInKey } from '../../domain/music/pitchClass';
 import {
   normalizeMeasureRange,
+  chordEventToChordDefinition,
   getChordEndBeat,
   getChordMaxDurationBeats,
   getMelodyNoteEndBeat,
@@ -1081,7 +1082,7 @@ export function TimelineGrid({
                           (chord) => beat >= chord.startBeat && beat < getChordEndBeat(chord),
                         );
                         const isChordTone = activeChord
-                          ? getChordNotes(activeChord.root, activeChord.quality).includes(pitch.pitch)
+                          ? chordEventToChordDefinition(activeChord).notes.includes(pitch.pitch)
                           : false;
                         const occupiedNote = visibleMelodyNotes.find(
                           (note) =>

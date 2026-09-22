@@ -1,4 +1,8 @@
-import { getChordNotes } from './chords';
+import {
+  chordDefinitionWithSymbolNotes,
+  ensureChordEventSymbol,
+  transposeChordSymbol,
+} from './chordSymbol';
 import { PITCH_CLASS_COUNT, noteNameToPitchClass, normalizePitchClass, pitchClassToNoteName } from './pitchClass';
 import {
   beatToTick,
@@ -29,7 +33,7 @@ export interface ChordGridMeasure { beats: ChordGridBeat[]; position: number; }
 export interface MeasureRange { startMeasure: number; measureCount: number; }
 export interface MeasureRangeClipboardChord {
   relativeStartTick: number; durationTicks: number; relativeStartBeat: number; durationBeats: number;
-  root: ChordEvent['root']; quality: ChordEvent['quality']; bass?: ChordEvent['bass']; tie?: TieRelation;
+  root: ChordEvent['root']; quality: ChordEvent['quality']; bass?: ChordEvent['bass']; chordSymbol?: ChordEvent['chordSymbol']; tie?: TieRelation;
 }
 export interface MeasureRangeClipboardMelodyNote {
   relativeStartTick: number; durationTicks: number; relativeStartBeat: number; durationBeats: number;
@@ -110,7 +114,7 @@ const finalizeSong = (song: Song): Song => withDisplayTiming({
   timeSignatureEvents: replaceInitialEvent(song.timeSignatureEvents, { tick: 0, timeSignature: song.timeSignature }),
   keySignatureEvents: replaceInitialEvent(song.keySignatureEvents, { tick: 0, key: song.key }),
   tempoEvents: replaceInitialEvent(song.tempoEvents, { tick: 0, bpm: song.bpm }),
-  chords: song.chords.map((chord) => ({ ...chord })),
+  chords: song.chords.map(ensureChordEventSymbol),
   melodyNotes: song.melodyNotes.map((note) => ({ ...note })),
 });
 
@@ -154,7 +158,7 @@ export const getChordEndBeat = (chord: Pick<ChordEvent, 'startBeat' | 'durationB
 export const getMelodyNoteEndBeat = (note: Pick<MelodyNote, 'startBeat' | 'durationBeats'>) => note.startBeat + note.durationBeats;
 export const sortChordEvents = (chords: ChordEvent[]) => [...chords].sort((a, b) => a.startTick - b.startTick || a.id.localeCompare(b.id));
 export const sortMelodyNotes = (notes: MelodyNote[]) => [...notes].sort((a, b) => a.startTick - b.startTick || a.octave - b.octave || a.pitch.localeCompare(b.pitch) || a.id.localeCompare(b.id));
-export const chordEventToChordDefinition = (chord: ChordEvent): ChordDefinition => ({ root: chord.root, type: chord.quality, notes: getChordNotes(chord.root, chord.quality), bass: chord.bass });
+export const chordEventToChordDefinition = (chord: ChordEvent): ChordDefinition => chordDefinitionWithSymbolNotes(chord);
 
 export const gridToChordEvents = (grid: ChordGridMeasure[], timeSignature: TimeSignature, ticksPerQuarter = DEFAULT_TICKS_PER_QUARTER): ChordEvent[] => {
   const context = { ticksPerQuarter, timeSignature } as Pick<Song, 'ticksPerQuarter' | 'timeSignature'>;
@@ -162,7 +166,7 @@ export const gridToChordEvents = (grid: ChordGridMeasure[], timeSignature: TimeS
     if (!beat.chord) return [];
     const measurePosition = Number.isInteger(measure.position) ? measure.position : measureIndex;
     const beatPosition = Number.isInteger(beat.position) ? beat.position : beatIndex;
-    return [{ id: createMusicId('chord'), root: beat.chord.root, quality: beat.chord.type, bass: beat.chord.bass,
+    return [{ id: createMusicId('chord'), root: beat.chord.root, quality: beat.chord.type, bass: beat.chord.bass, chordSymbol: beat.chord.chordSymbol,
       startTick: beatToTick(context, measurePosition * timeSignature.beatsPerMeasure + beatPosition),
       durationTicks: Math.max(1, beatToTick(context, Math.max(1, beat.duration))),
     }];
@@ -238,7 +242,12 @@ export const changeSongTotalMeasures = (song: Song, nextTotalMeasures: number): 
 const MIN_MELODY_OCTAVE = 0; const MAX_MELODY_OCTAVE = 8;
 export const transposeNoteName = (note: NoteName, semitones: number): NoteName => pitchClassToNoteName(normalizePitchClass(noteNameToPitchClass(note) + semitones));
 export const getKeyTransposeSemitones = (from: NoteName, to: NoteName) => { const upward = normalizePitchClass(noteNameToPitchClass(to) - noteNameToPitchClass(from)); return upward > 6 ? upward - 12 : upward; };
-export const transposeChordEvent = (chord: ChordEvent, semitones: number): ChordEvent => ({ ...chord, root: transposeNoteName(chord.root, semitones), bass: chord.bass ? transposeNoteName(chord.bass, semitones) : undefined });
+export const transposeChordEvent = (chord: ChordEvent, semitones: number): ChordEvent => ({
+  ...chord,
+  root: transposeNoteName(chord.root, semitones),
+  bass: chord.bass ? transposeNoteName(chord.bass, semitones) : undefined,
+  chordSymbol: transposeChordSymbol(ensureChordEventSymbol(chord).chordSymbol!, semitones),
+});
 export const transposeMelodyNote = (note: MelodyNote, semitones: number): MelodyNote => ({ ...note, pitch: transposeNoteName(note.pitch, semitones), octave: Math.max(MIN_MELODY_OCTAVE, Math.min(MAX_MELODY_OCTAVE, note.octave + Math.floor((noteNameToPitchClass(note.pitch) + semitones) / PITCH_CLASS_COUNT))) });
 export interface ChangeSongKeyOptions { transposeExisting?: boolean; }
 export const changeSongKey = (song: Song, key: SongKey, options: ChangeSongKeyOptions = {}): Song => {
@@ -262,7 +271,7 @@ export const copyMeasureRangeFromSong = (song: Song, range: MeasureRange): Measu
     chords: song.chords.flatMap((event) => {
       if (!inRange(event, source.startTick, source.endTick)) return [];
       const startTick = Math.max(event.startTick, source.startTick); const endTick = Math.min(getChordEndTick(event), source.endTick);
-      return endTick > startTick ? [{ root: event.root, quality: event.quality, bass: event.bass, tie: event.tie, relativeStartTick: startTick - source.startTick, durationTicks: endTick - startTick, relativeStartBeat: display(startTick - source.startTick), durationBeats: display(endTick - startTick) }] : [];
+      return endTick > startTick ? [{ root: event.root, quality: event.quality, bass: event.bass, chordSymbol: event.chordSymbol, tie: event.tie, relativeStartTick: startTick - source.startTick, durationTicks: endTick - startTick, relativeStartBeat: display(startTick - source.startTick), durationBeats: display(endTick - startTick) }] : [];
     }),
     melodyNotes: song.melodyNotes.flatMap((event) => {
       if (!inRange(event, source.startTick, source.endTick)) return [];
@@ -280,7 +289,7 @@ export const pasteMeasureRangeClipboard = (song: Song, clipboard: MeasureRangeCl
   if (!clipboard || !canPasteMeasureRangeClipboard(song, clipboard, targetStartMeasure)) return song;
   const target = getMeasureRangeTicks(song, targetStartMeasure, clipboard.measureCount); if (!target) return song;
   return finalizeSong({ ...song,
-    chords: sortChordEvents([...preserveOutsideRange(song.chords, target.startTick, target.endTick), ...clipboard.chords.map((event) => ({ id: createMusicId('chord'), root: event.root, quality: event.quality, bass: event.bass, tie: event.tie, startTick: target.startTick + event.relativeStartTick, durationTicks: event.durationTicks })) as ChordEvent[]]),
+    chords: sortChordEvents([...preserveOutsideRange(song.chords, target.startTick, target.endTick), ...clipboard.chords.map((event) => ({ id: createMusicId('chord'), root: event.root, quality: event.quality, bass: event.bass, chordSymbol: event.chordSymbol, tie: event.tie, startTick: target.startTick + event.relativeStartTick, durationTicks: event.durationTicks })) as ChordEvent[]]),
     melodyNotes: sortMelodyNotes([...preserveOutsideRange(song.melodyNotes, target.startTick, target.endTick), ...clipboard.melodyNotes.map((event) => ({ id: createMusicId('melody'), pitch: event.pitch, octave: event.octave, velocity: event.velocity, tie: event.tie, startTick: target.startTick + event.relativeStartTick, durationTicks: event.durationTicks })) as MelodyNote[]]),
   });
 };
@@ -297,17 +306,17 @@ export const insertChordAtTick = (song: Song, startTick: number, chord: ChordDef
   const start = Math.max(0, Math.min(Math.round(startTick), total - 1));
   const next = sortChordEvents(song.chords).find((event) => event.startTick > start);
   const end = next?.startTick ?? total;
-  const inserted = { id: createMusicId('chord'), root: chord.root, quality: chord.type, bass: chord.bass, startTick: start, durationTicks: Math.max(1, end - start) } as ChordEvent;
+  const inserted = { id: createMusicId('chord'), root: chord.root, quality: chord.type, bass: chord.bass, chordSymbol: chord.chordSymbol, startTick: start, durationTicks: Math.max(1, end - start) } as ChordEvent;
   const preserved = song.chords.flatMap((event) => event.startTick === start ? [] : event.startTick < start && getChordEndTick(event) > start ? [{ ...event, durationTicks: Math.max(1, start - event.startTick) }] : [event]);
   return finalizeSong({ ...song, chords: sortChordEvents([...preserved, inserted]) });
 };
 export const insertChordInSong = (song: Song, startBeat: number, chord: ChordDefinition) => insertChordAtTick(song, beatToTick(song, clampBeat(startBeat, getTotalBeats(song))), chord);
-export interface ChordProgressionEntry { root: NoteName; quality: ChordQuality; bass?: NoteName; }
+export interface ChordProgressionEntry { root: NoteName; quality: ChordQuality; bass?: NoteName; chordSymbol?: ChordEvent['chordSymbol']; }
 export const insertChordProgressionInSong = (song: Song, startBeat: number, chords: ChordProgressionEntry[], beatsPerChord: number): Song => {
   const total = getTotalBeats(song); if (total <= 0 || chords.length === 0 || beatsPerChord <= 0) return song;
   const startBeatClamped = clampBeat(startBeat, total); const count = Math.min(chords.length, Math.floor((total - startBeatClamped) / beatsPerChord)); if (count <= 0) return song;
   const startTick = beatToTick(song, startBeatClamped); const durationTicks = Math.max(1, beatToTick(song, beatsPerChord)); const endTick = startTick + count * durationTicks;
-  const inserted = chords.slice(0, count).map((event, index) => ({ id: createMusicId('chord'), root: event.root, quality: event.quality, bass: event.bass, startTick: startTick + index * durationTicks, durationTicks }));
+  const inserted = chords.slice(0, count).map((event, index) => ({ id: createMusicId('chord'), root: event.root, quality: event.quality, bass: event.bass, chordSymbol: event.chordSymbol, startTick: startTick + index * durationTicks, durationTicks }));
   return finalizeSong({ ...song, chords: sortChordEvents([...preserveOutsideRange(song.chords, startTick, endTick), ...inserted as ChordEvent[]]) });
 };
 export const deleteChordFromSong = (song: Song, id: string) => finalizeSong({ ...song, chords: song.chords.filter((event) => event.id !== id) });

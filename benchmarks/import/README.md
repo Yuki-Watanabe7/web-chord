@@ -14,6 +14,8 @@ benchmarks/import/
   evaluate.mjs              # 採点処理
 ```
 
+`chord-symbols.fixture.json` は、3曲のバージョン管理済み代表区間に現れる原表記を一覧化した台帳です。保護された原譜そのものは含めず、追加のコード記法は `parserCoverage` と `src/domain/music/chordSymbol.test.ts` で回帰確認します。
+
 内部表記の`PPQ`（四分音符あたりのtick数）は480です。各ノートとコードの`onsetTick`は小節先頭からの相対位置、`durationTicks`は長さです。主旋律の音高はMIDIノート番号、タイは`none`／`start`／`continue`／`stop`で記録します。弱起は小節の`pickupTicks`、反復・番括弧・Segno・D.S.・Coda・To Coda・Fineは`structure.navigation`、実際に演奏する小節列は`structure.playbackOrder`で表します。
 
 `regression-probe-v1`は実在するOMR変換器の精度を示すものではありません。誤ったベース音、音符、tick、調、タイなどを意図的に含め、評価処理が項目別・小節別に誤りを出せることを固定するテスト入力です。

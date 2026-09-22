@@ -1,4 +1,5 @@
 import { formatChordNameInKey, formatChordSymbolInKey } from './chords';
+import { formatStructuredChordSymbolInKey } from './chordSymbol';
 import { formatChordAsRomanNumeralLabel } from './chordProgressionTemplates';
 import type { ChordDisplayMode, ChordEvent, SongKey } from './types';
 
@@ -12,7 +13,7 @@ export interface TimelineChordLabel {
   visible: CompactChordLabel;
 }
 
-type TimelineChordLabelSource = Pick<ChordEvent, 'root' | 'quality' | 'bass'>;
+type TimelineChordLabelSource = Pick<ChordEvent, 'root' | 'quality' | 'bass' | 'chordSymbol'>;
 
 const splitSlashChordLabel = (label: string): CompactChordLabel => {
   const slashIndex = label.indexOf('/');
@@ -32,6 +33,10 @@ const formatFullChordLabel = (
   chordDisplayMode: ChordDisplayMode,
   key: SongKey,
 ) => {
+  if (chord.chordSymbol && (chord.chordSymbol.kind === 'none' || chord.chordSymbol.kind === 'other' || chord.chordSymbol.degrees.length > 0 || chord.chordSymbol.extension === 6 || chord.chordSymbol.kind.startsWith('suspended') || chord.chordSymbol.kind === 'half-diminished')) {
+    return formatStructuredChordSymbolInKey(chord.chordSymbol, key);
+  }
+
   if (chordDisplayMode === 'roman') {
     return formatChordAsRomanNumeralLabel(chord.root, chord.quality, key, chord.bass);
   }
@@ -44,6 +49,10 @@ const formatCompactChordLabel = (
   chordDisplayMode: ChordDisplayMode,
   key: SongKey,
 ) => {
+  if (chord.chordSymbol) {
+    return formatStructuredChordSymbolInKey(chord.chordSymbol, key);
+  }
+
   if (chordDisplayMode === 'roman') {
     return formatChordAsRomanNumeralLabel(chord.root, chord.quality, key, chord.bass);
   }

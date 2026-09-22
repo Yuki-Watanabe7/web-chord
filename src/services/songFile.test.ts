@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Song } from '../domain/music/types';
+import { parseChordSymbol } from '../domain/music/chordSymbol';
 import { createEmptySong } from '../domain/music/timeline';
 import {
   createSongExportFile,
@@ -23,7 +24,7 @@ describe('songFile', () => {
   it('wraps a single song in the versioned export envelope', () => {
     expect(createSongExportFile([song], '2026-07-14T00:00:00.000Z')).toEqual({
       format: 'web-chord',
-      schemaVersion: 2,
+      schemaVersion: 3,
       exportedAt: '2026-07-14T00:00:00.000Z',
       songs: [song],
     });
@@ -40,6 +41,46 @@ describe('songFile', () => {
     });
   });
 
+  it('round-trips a structured symbol and its parse warning without replacing its raw text', () => {
+    const unknownSymbolSong = createEmptySong({
+      ...song,
+      id: 'unknown-symbol-song',
+      chords: [{
+        id: 'chord-unknown',
+        root: 'C',
+        quality: 'major',
+        chordSymbol: parseChordSymbol('C7alt'),
+        startTick: 0,
+        durationTicks: 1440,
+      }],
+    });
+
+    const result = parseSongExportFile(serializeSongExportFile([unknownSymbolSong]));
+
+    expect(result).toMatchObject({
+      ok: true,
+      songs: [{ chords: [{ chordSymbol: { raw: 'C7alt', kind: 'other' } }] }],
+    });
+  });
+
+  it('imports a raw-only chord symbol when no legacy quality is available', () => {
+    const result = parseSongExportFile(JSON.stringify({
+      format: 'web-chord',
+      schemaVersion: 3,
+      exportedAt: '2026-07-14T00:00:00.000Z',
+      songs: [{
+        ...song,
+        id: 'raw-only-symbol-song',
+        chords: [{ id: 'chord-no-chord', chordSymbol: 'N.C.', startTick: 0, durationTicks: 1440 }],
+      }],
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      songs: [{ chords: [{ root: 'C', quality: 'major', chordSymbol: { raw: 'N.C.', kind: 'none' } }] }],
+    });
+  });
+
   it('rejects JSON from another application', () => {
     const result = parseSongExportFile(JSON.stringify({ format: 'another-app', schemaVersion: 1, songs: [] }));
 
@@ -47,7 +88,7 @@ describe('songFile', () => {
   });
 
   it('identifies files made by a newer version', () => {
-    const result = parseSongExportFile(JSON.stringify({ format: 'web-chord', schemaVersion: 3, songs: [] }));
+    const result = parseSongExportFile(JSON.stringify({ format: 'web-chord', schemaVersion: 4, songs: [] }));
 
     expect(result).toMatchObject({ ok: false, code: 'newer-schema-version' });
   });

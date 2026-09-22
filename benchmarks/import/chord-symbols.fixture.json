@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "description": "Chord-symbol ledger for the three protected-score benchmark segments. scoreSymbols are copied from the versioned ground-truth fixtures; parserCoverage lists notation forms exercised by the domain tests without asserting that every form occurs in every protected score.",
+  "scoreSymbols": [
+    {
+      "scoreId": "sekai-ga-hitotsu-ni-naru-made",
+      "fixture": "fixtures/sekai-ga-hitotsu-ni-naru-made.intro-m1.json",
+      "symbols": ["F", "C/E"]
+    },
+    {
+      "scoreId": "charismax",
+      "fixture": "fixtures/charismax.hook-m19.json",
+      "symbols": ["G", "A"]
+    },
+    {
+      "scoreId": "automatic",
+      "fixture": "fixtures/automatic.intro-m3.json",
+      "symbols": ["Fm7", "Cm7"]
+    }
+  ],
+  "parserCoverage": [
+    "C",
+    "Cm",
+    "Cdim",
+    "Caug",
+    "C6",
+    "C7",
+    "Cmaj7",
+    "Cm7",
+    "Csus2",
+    "Csus4",
+    "Cm7♭5",
+    "Cadd9",
+    "C7(♭5,♭9,#9,omit3)/E",
+    "N.C.",
+    "C7alt"
+  ]
+}
