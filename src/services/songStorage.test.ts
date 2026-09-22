@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Song } from '../domain/music/types';
+import { createEmptySong } from '../domain/music/timeline';
 import { mergeAndSaveImportedSongs, mergeImportedSongs, replaceSongs } from './songStorage';
 
 class MemoryStorage implements Storage {
@@ -25,17 +26,9 @@ class MemoryStorage implements Storage {
   };
 }
 
-const makeSong = (id: string, title = 'テスト曲'): Song => ({
-  id,
-  title,
-  bpm: 120,
-  timeSignature: { beatsPerMeasure: 4, beatUnit: 4 },
-  totalMeasures: 4,
-  key: { tonic: 'C', mode: 'major' },
-  chords: [],
-  melodyNotes: [],
-  createdAt: '2026-07-01T00:00:00.000Z',
-  updatedAt: '2026-07-02T00:00:00.000Z',
+const makeSong = (id: string, title = 'テスト曲'): Song => createEmptySong({
+  id, title, totalMeasures: 4,
+  createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-02T00:00:00.000Z',
 });
 
 describe('songStorage import', () => {

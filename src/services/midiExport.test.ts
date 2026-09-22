@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createEmptySong, insertChordInSong, insertMelodyNoteInSong } from '../domain/music/timeline';
+import {
+  addKeySignatureEvent,
+  addTempoEvent,
+  addTimeSignatureEvent,
+  createEmptySong,
+  insertChordInSong,
+  insertMelodyNoteInSong,
+} from '../domain/music/timeline';
 import { createMidiFile } from './midiExport';
 
 const containsSubsequence = (haystack: Uint8Array, needle: number[]) => {
@@ -53,5 +60,25 @@ describe('createMidiFile (fractional melody beats)', () => {
 
     expect(containsSubsequence(bytes, [0x81, 0x70, 0x91, 60, 102])).toBe(true);
     expect(containsSubsequence(bytes, [0x85, 0x50, 0x81, 60, 0])).toBe(true);
+  });
+});
+
+describe('createMidiFile (timeline changes)', () => {
+  it('emits time signature, key, and tempo changes at their original ticks', () => {
+    const song = addKeySignatureEvent(
+      addTempoEvent(
+        addTimeSignatureEvent(createEmptySong({ totalMeasures: 2 }), 1920, { beatsPerMeasure: 3, beatUnit: 4 }),
+        1920,
+        92,
+      ),
+      1920,
+      { tonic: 'A', mode: 'minor' },
+    );
+
+    const bytes = createMidiFile(song);
+
+    expect(containsSubsequence(bytes, [0x8f, 0x00, 0xff, 0x51, 0x03, 0x09, 0xf3, 0x8e])).toBe(true);
+    expect(containsSubsequence(bytes, [0x00, 0xff, 0x58, 0x04, 0x03, 0x02, 0x18, 0x08])).toBe(true);
+    expect(containsSubsequence(bytes, [0x00, 0xff, 0x59, 0x02, 0x00, 0x01])).toBe(true);
   });
 });
