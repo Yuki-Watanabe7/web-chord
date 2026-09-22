@@ -1,0 +1,44 @@
+{
+  "$schema": "../fixture.schema.json",
+  "schemaVersion": 1,
+  "scoreId": "sekai-ga-hitotsu-ni-naru-made",
+  "segment": {
+    "id": "intro-m1",
+    "sourcePage": 1,
+    "sourceSystem": 1,
+    "measureStart": 1,
+    "measureEnd": 1
+  },
+  "ppq": 480,
+  "measures": [
+    {
+      "number": 1,
+      "durationTicks": 1920,
+      "timeSignature": { "beats": 4, "beatType": 4 },
+      "key": { "fifths": 0, "mode": "major" },
+      "tempoBpm": 84,
+      "pickupTicks": 0
+    }
+  ],
+  "chords": [
+    { "measure": 1, "onsetTick": 0, "durationTicks": 960, "symbol": "F", "root": "F", "bass": null, "quality": "major" },
+    { "measure": 1, "onsetTick": 960, "durationTicks": 960, "symbol": "C/E", "root": "C", "bass": "E", "quality": "major" }
+  ],
+  "melody": [
+    { "measure": 1, "onsetTick": 0, "durationTicks": 480, "midi": 65, "tie": "none" },
+    { "measure": 1, "onsetTick": 480, "durationTicks": 120, "midi": 64, "tie": "none" },
+    { "measure": 1, "onsetTick": 600, "durationTicks": 120, "midi": 65, "tie": "none" },
+    { "measure": 1, "onsetTick": 720, "durationTicks": 120, "midi": 67, "tie": "none" },
+    { "measure": 1, "onsetTick": 840, "durationTicks": 120, "midi": 69, "tie": "none" },
+    { "measure": 1, "onsetTick": 960, "durationTicks": 240, "midi": 67, "tie": "none" },
+    { "measure": 1, "onsetTick": 1200, "durationTicks": 480, "midi": 64, "tie": "none" },
+    { "measure": 1, "onsetTick": 1680, "durationTicks": 240, "midi": 65, "tie": "none" }
+  ],
+  "structure": {
+    "timeSignatures": [{ "measure": 1, "onsetTick": 0, "beats": 4, "beatType": 4 }],
+    "keys": [{ "measure": 1, "onsetTick": 0, "fifths": 0, "mode": "major" }],
+    "tempos": [{ "measure": 1, "onsetTick": 0, "bpm": 84 }],
+    "navigation": [],
+    "playbackOrder": [1]
+  }
+}

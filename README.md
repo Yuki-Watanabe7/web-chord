@@ -56,6 +56,10 @@ MIDI書き出しでは、現在の `Song` モデルをそのまま標準MIDIフ�
 
 書き出しファイル名は曲名をもとにした `.mid` ファイルになります。
 
+## 楽譜インポート評価
+
+PDF／OMR／MusicXMLからの取り込み品質を比較するため、著作権保護された原PDFをGit管理せずに実行できるfixtureベースのベンチマークがあります。配置方法、正解データ形式、評価指標、レポート生成方法は[`benchmarks/import/README.md`](benchmarks/import/README.md)を参照してください。
+
 ## Tech Stack
 
 - Vite

@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "benchmark:import": "node scripts/evaluate-import-benchmark.mjs",
+    "benchmark:verify-sources": "node scripts/verify-import-benchmark-sources.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

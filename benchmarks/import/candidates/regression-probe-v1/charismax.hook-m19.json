@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "scoreId": "charismax",
+  "segment": { "id": "hook-m19", "sourcePage": 1, "sourceSystem": 5, "measureStart": 19, "measureEnd": 19 },
+  "ppq": 480,
+  "measures": [
+    { "number": 19, "durationTicks": 1920, "timeSignature": { "beats": 4, "beatType": 4 }, "key": { "fifths": 2, "mode": "minor" }, "tempoBpm": 156, "pickupTicks": 0 }
+  ],
+  "chords": [
+    { "measure": 19, "onsetTick": 0, "durationTicks": 960, "symbol": "G", "root": "G", "bass": null, "quality": "major" },
+    { "measure": 19, "onsetTick": 1020, "durationTicks": 900, "symbol": "A", "root": "A", "bass": null, "quality": "major" }
+  ],
+  "melody": [
+    { "measure": 19, "onsetTick": 0, "durationTicks": 240, "midi": 71, "tie": "none" },
+    { "measure": 19, "onsetTick": 240, "durationTicks": 240, "midi": 71, "tie": "none" },
+    { "measure": 19, "onsetTick": 480, "durationTicks": 240, "midi": 71, "tie": "none" },
+    { "measure": 19, "onsetTick": 720, "durationTicks": 300, "midi": 71, "tie": "none" },
+    { "measure": 19, "onsetTick": 960, "durationTicks": 240, "midi": 71, "tie": "none" },
+    { "measure": 19, "onsetTick": 1200, "durationTicks": 240, "midi": 71, "tie": "none" },
+    { "measure": 19, "onsetTick": 1440, "durationTicks": 240, "midi": 71, "tie": "none" },
+    { "measure": 19, "onsetTick": 1680, "durationTicks": 240, "midi": 69, "tie": "none" }
+  ],
+  "structure": {
+    "timeSignatures": [{ "measure": 19, "onsetTick": 0, "beats": 4, "beatType": 4 }],
+    "keys": [{ "measure": 19, "onsetTick": 0, "fifths": 2, "mode": "minor" }],
+    "tempos": [{ "measure": 19, "onsetTick": 0, "bpm": 156 }],
+    "navigation": [],
+    "playbackOrder": [19]
+  },
+  "warnings": [
+    { "measure": 19, "field": "melody.pitch", "code": "low-confidence-pitch", "message": "Final repeated note is uncertain." }
+  ]
+}
