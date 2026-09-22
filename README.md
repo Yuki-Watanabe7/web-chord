@@ -60,6 +60,8 @@ MIDI書き出しでは、現在の `Song` モデルをそのまま標準MIDIフ�
 
 PDF／OMR／MusicXMLからの取り込み品質を比較するため、著作権保護された原PDFをGit管理せずに実行できるfixtureベースのベンチマークがあります。配置方法、正解データ形式、評価指標、レポート生成方法は[`benchmarks/import/README.md`](benchmarks/import/README.md)を参照してください。
 
+PDFからMusicXML候補を作る処理は、ブラウザとは分離したローカルOMRジョブとして実行します。必要な依存ソフト、実行方法、保存する成果物、入力の安全上限、Audiverisのライセンス条件は[`docs/omr.md`](docs/omr.md)を参照してください。
+
 ## Tech Stack
 
 - Vite
