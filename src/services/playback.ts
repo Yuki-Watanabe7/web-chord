@@ -43,6 +43,11 @@ export const playChordProgression = async (song: Song, synth: ChordPlaybackSynth
     await wait(tickToPlaybackMilliseconds(song, chord.startTick) - tickToPlaybackMilliseconds(song, currentTick));
     const chordEnd = Math.min(getChordEndTick(chord), end);
     const notes = getChordPlaybackNotes(chordEventToChordDefinition(chord));
+    if (notes.length === 0) {
+      await wait(tickToPlaybackMilliseconds(song, chordEnd) - tickToPlaybackMilliseconds(song, chord.startTick));
+      currentTick = chordEnd;
+      continue;
+    }
     synth.triggerAttack(notes);
     await wait(tickToPlaybackMilliseconds(song, chordEnd) - tickToPlaybackMilliseconds(song, chord.startTick));
     synth.triggerRelease(notes); currentTick = chordEnd;
@@ -53,9 +58,10 @@ export const playSong = async (song: Song, synths: SongPlaybackSynths) => {
   await Tone.start(); synths.releaseAll();
   const end = getSongEndTick(song);
   const scheduled = [
-    ...sortChordEvents(song.chords).filter((event) => event.startTick < end && event.durationTicks > 0).map((event) => {
+    ...sortChordEvents(song.chords).filter((event) => event.startTick < end && event.durationTicks > 0).flatMap((event) => {
       const endTick = Math.min(getChordEndTick(event), end); const startMs = tickToPlaybackMilliseconds(song, event.startTick); const endMs = tickToPlaybackMilliseconds(song, endTick);
-      return { startMs, endMs, play: () => synths.chords.triggerAttackRelease(getChordPlaybackNotes(chordEventToChordDefinition(event)), (endMs - startMs) / 1000, undefined, 0.58) };
+      const notes = getChordPlaybackNotes(chordEventToChordDefinition(event));
+      return notes.length > 0 ? [{ startMs, endMs, play: () => synths.chords.triggerAttackRelease(notes, (endMs - startMs) / 1000, undefined, 0.58) }] : [];
     }),
     ...sortMelodyNotes(song.melodyNotes).filter((event) => event.startTick < end && event.durationTicks > 0).map((event) => {
       const endTick = Math.min(getMelodyNoteEndTick(event), end); const startMs = tickToPlaybackMilliseconds(song, event.startTick); const endMs = tickToPlaybackMilliseconds(song, endTick);

@@ -1,6 +1,6 @@
-import { getChordNotes, NOTE_NAMES } from '../domain/music/chords';
+import { NOTE_NAMES } from '../domain/music/chords';
 import { getSongEndTick, getTimeSignatureAtTick } from '../domain/music/timing';
-import { getChordEndTick, getMelodyNoteEndTick, sortChordEvents, sortMelodyNotes } from '../domain/music/timeline';
+import { chordEventToChordDefinition, getChordEndTick, getMelodyNoteEndTick, sortChordEvents, sortMelodyNotes } from '../domain/music/timeline';
 import type { ChordEvent, NoteName, Song, SongKey, TimeSignature } from '../domain/music/types';
 
 const ACCOMPANIMENT_CHANNEL = 0;
@@ -36,7 +36,7 @@ const keySignatureEvent = (key: SongKey) => metaEvent(0x59, [
 const noteNameToMidiNumber = (pitch: NoteName, octave: number) => clamp((octave + 1) * 12 + NOTE_NAMES.indexOf(pitch), 0, 127);
 const chordToMidiNumbers = (chord: ChordEvent) => {
   const root = noteNameToMidiNumber(chord.root, 3);
-  return getChordNotes(chord.root, chord.quality).map((name) => { let midi = noteNameToMidiNumber(name, 3); while (midi < root) midi += 12; return clamp(midi, 0, 127); });
+  return chordEventToChordDefinition(chord).notes.map((name) => { let midi = noteNameToMidiNumber(name, 3); while (midi < root) midi += 12; return clamp(midi, 0, 127); });
 };
 const noteEvents = (startTick: number, endTick: number, channel: number, note: number, velocity: number): MidiEvent[] => endTick <= startTick ? [] : [
   { tick: startTick, order: 2, bytes: noteOnEvent(channel, note, velocity) },
@@ -46,7 +46,9 @@ const createChordTrackEvents = (song: Song): MidiEvent[] => {
   const end = getSongEndTick(song);
   return sortChordEvents(song.chords).flatMap((chord) => {
     if (chord.startTick >= end || chord.durationTicks <= 0) return [];
-    const notes = chord.bass ? [...chordToMidiNumbers(chord), noteNameToMidiNumber(chord.bass, 2)] : chordToMidiNumbers(chord);
+    const chordNotes = chordToMidiNumbers(chord);
+    if (chordNotes.length === 0) return [];
+    const notes = chord.bass ? [...chordNotes, noteNameToMidiNumber(chord.bass, 2)] : chordNotes;
     return notes.flatMap((note) => noteEvents(chord.startTick, Math.min(getChordEndTick(chord), end), ACCOMPANIMENT_CHANNEL, note, 72));
   });
 };

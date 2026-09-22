@@ -37,6 +37,33 @@ describe('normalizeSong (slash chords)', () => {
 
     expect(song?.chords[0].root).toBe('C');
     expect(song?.chords[0].bass).toBeUndefined();
+    expect(song?.chords[0].chordSymbol).toMatchObject({
+      raw: 'C',
+      root: { step: 'C', alter: 0 },
+      kind: 'major',
+      warnings: [],
+    });
+  });
+
+  it('keeps an imported unknown chord symbol instead of dropping or coercing it', () => {
+    const song = normalizeSong({
+      id: 'song-unknown-chord',
+      title: 'テスト',
+      bpm: 120,
+      timeSignature: { beatsPerMeasure: 4, beatUnit: 4 },
+      totalMeasures: 1,
+      chords: [{ id: 'chord-unknown', chordSymbol: 'C7alt', startTick: 0, durationTicks: 1920 }],
+      melodyNotes: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(song?.chords[0]).toMatchObject({
+      root: 'C',
+      quality: 'major',
+      chordSymbol: { raw: 'C7alt', kind: 'other' },
+    });
+    expect(song?.chords[0].chordSymbol?.warnings[0]?.code).toBe('ambiguous-symbol');
   });
 
   it('treats existing songs without a bass field as root-position chords (backward compatibility)', () => {

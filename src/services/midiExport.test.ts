@@ -7,6 +7,7 @@ import {
   insertChordInSong,
   insertMelodyNoteInSong,
 } from '../domain/music/timeline';
+import { chordSymbolToDefinition, parseChordSymbol } from '../domain/music/chordSymbol';
 import { createMidiFile } from './midiExport';
 
 const containsSubsequence = (haystack: Uint8Array, needle: number[]) => {
@@ -42,6 +43,35 @@ describe('createMidiFile (slash chords)', () => {
 
     const bytes = createMidiFile(song);
     expect(containsSubsequence(bytes, [0x90, 40, 72])).toBe(false);
+  });
+});
+
+describe('createMidiFile (structured chord symbols)', () => {
+  it('uses added and altered degrees when generating accompaniment notes', () => {
+    const song = insertChordInSong(
+      createEmptySong({ totalMeasures: 1 }),
+      0,
+      chordSymbolToDefinition(parseChordSymbol('C7(♭5,#9)')),
+    );
+
+    const bytes = createMidiFile(song);
+    // F♯3 is the altered fifth and D♯3 is the altered ninth.
+    expect(containsSubsequence(bytes, [0x90, 54, 72])).toBe(true);
+    expect(containsSubsequence(bytes, [0x90, 51, 72])).toBe(true);
+    // The unaltered fifth G3 is removed by ♭5.
+    expect(containsSubsequence(bytes, [0x90, 55, 72])).toBe(false);
+  });
+
+  it('emits no accompaniment notes for N.C. rather than a fallback C chord', () => {
+    const song = insertChordInSong(
+      createEmptySong({ totalMeasures: 1 }),
+      0,
+      chordSymbolToDefinition(parseChordSymbol('N.C.')),
+    );
+
+    const bytes = createMidiFile(song);
+
+    expect(containsSubsequence(bytes, [0x90, 48, 72])).toBe(false);
   });
 });
 

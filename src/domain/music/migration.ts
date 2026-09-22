@@ -1,4 +1,9 @@
 import { getChordNotes, isChordQuality, isNoteName, isSongKeyMode } from './chords';
+import {
+  chordSymbolToLegacyFields,
+  createChordSymbolFromLegacyChord,
+  normalizeChordSymbol,
+} from './chordSymbol';
 import { DEFAULT_TICKS_PER_QUARTER } from './types';
 import {
   DEFAULT_BPM, DEFAULT_SONG_KEY, DEFAULT_TIME_SIGNATURE, DEFAULT_TOTAL_MEASURES,
@@ -28,7 +33,14 @@ const normalizeSongKey = (value: unknown): SongKey => isRecord(value)
 
 const normalizeChordDefinition = (value: unknown): ChordDefinition | null => {
   if (!isRecord(value) || !isNoteName(value.root) || !isChordQuality(value.type)) return null;
-  return { root: value.root, type: value.type, notes: getChordNotes(value.root, value.type), bass: normalizeBass(value.bass) };
+  const bass = normalizeBass(value.bass);
+  return {
+    root: value.root,
+    type: value.type,
+    notes: getChordNotes(value.root, value.type),
+    bass,
+    chordSymbol: normalizeChordSymbol(value.chordSymbol ?? value.symbol) ?? createChordSymbolFromLegacyChord(value.root, value.type, bass),
+  };
 };
 const normalizeLegacyGrid = (value: unknown, signature: TimeSignature): ChordGridMeasure[] => !Array.isArray(value) ? [] : value.map((measure, index) => {
   if (!isRecord(measure) || !Array.isArray(measure.beats)) return { position: index, beats: [] };
@@ -40,9 +52,14 @@ const normalizeLegacyGrid = (value: unknown, signature: TimeSignature): ChordGri
 });
 
 const normalizeChordEvents = (value: unknown): ChordEvent[] => !Array.isArray(value) ? [] : value.flatMap((event): ChordEvent[] => {
-  if (!isRecord(event) || !isNoteName(event.root) || !isChordQuality(event.quality)) return [];
+  if (!isRecord(event)) return [];
+  const chordSymbol = normalizeChordSymbol(event.chordSymbol ?? event.symbol);
+  const legacy = isNoteName(event.root) && isChordQuality(event.quality)
+    ? { root: event.root, quality: event.quality, bass: normalizeBass(event.bass) }
+    : chordSymbol ? chordSymbolToLegacyFields(chordSymbol) : null;
+  if (!legacy) return [];
   const tickBased = isNonNegativeInteger(event.startTick) && isPositiveInteger(event.durationTicks);
-  return [{ id: asString(event.id, createId('chord')), root: event.root, quality: event.quality, bass: normalizeBass(event.bass), tie: normalizeTie(event.tie),
+  return [{ id: asString(event.id, createId('chord')), ...legacy, chordSymbol: chordSymbol ?? createChordSymbolFromLegacyChord(legacy.root, legacy.quality, legacy.bass), tie: normalizeTie(event.tie),
     ...(tickBased ? { startTick: event.startTick, durationTicks: event.durationTicks } : { startBeat: asNonNegativeNumber(event.startBeat, 0), durationBeats: asPositiveNumber(event.durationBeats, 1) }),
   } as ChordEvent];
 });

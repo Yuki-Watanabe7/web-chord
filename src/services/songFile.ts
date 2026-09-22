@@ -1,11 +1,12 @@
 import { isChordQuality, isNoteName, isSongKeyMode } from '../domain/music/chords';
+import { isChordSymbol } from '../domain/music/chordSymbol';
 import { normalizeSong } from '../domain/music/migration';
 import { isNonNegativeInteger, isPositiveInteger, validateSongTiming } from '../domain/music/timing';
 import { MAX_TOTAL_MEASURES } from '../domain/music/timeline';
 import type { Song } from '../domain/music/types';
 
 export const SONG_EXPORT_FORMAT = 'web-chord';
-export const SONG_EXPORT_SCHEMA_VERSION = 2;
+export const SONG_EXPORT_SCHEMA_VERSION = 3;
 export const MAX_SONG_EXPORT_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_SONG_EXPORT_SONGS = 200;
 
@@ -74,11 +75,14 @@ const isValidChordEvent = (value: unknown) => {
     return false;
   }
 
+  const hasLegacyChord = isNoteName(value.root) && isChordQuality(value.quality);
+  const hasStructuredChord = isChordSymbol(value.chordSymbol ?? value.symbol) || isNonEmptyString(value.chordSymbol ?? value.symbol);
+
   return (
     isNonEmptyString(value.id) &&
-    isNoteName(value.root) &&
-    isChordQuality(value.quality) &&
+    (hasLegacyChord || hasStructuredChord) &&
     (value.bass === undefined || isNoteName(value.bass)) &&
+    (value.chordSymbol === undefined || isChordSymbol(value.chordSymbol) || isNonEmptyString(value.chordSymbol)) &&
     (
       (isNonNegativeInteger(value.startTick) && isPositiveInteger(value.durationTicks)) ||
       (isNonNegativeNumber(value.startBeat) && isPositiveNumber(value.durationBeats))
@@ -230,7 +234,7 @@ export const parseSongExportFile = (value: string): SongExportParseResult => {
     );
   }
 
-  if (schemaVersion !== 1 && schemaVersion !== SONG_EXPORT_SCHEMA_VERSION) {
+  if (schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== SONG_EXPORT_SCHEMA_VERSION) {
     return parseError('unsupported-schema-version', '対応していないファイル形式のバージョンです。');
   }
 
