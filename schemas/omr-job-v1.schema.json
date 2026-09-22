@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://web-chord.local/schemas/omr-job-v1.schema.json",
+  "title": "web-chord PDF OMR job artifact",
+  "description": "The persisted, source-free result of one local PDF-to-MusicXML OMR job.",
+  "type": "object",
+  "required": ["contractVersion", "contractSchema", "jobId", "status", "input", "config", "engine", "artifacts", "diagnostics", "commands"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "contractSchema": { "const": "schemas/omr-job-v1.schema.json" },
+    "jobId": { "type": "string", "pattern": "^omr-[a-f0-9]{20}$" },
+    "status": { "enum": ["succeeded", "failed"] },
+    "input": {
+      "type": "object",
+      "required": ["fileName", "sha256", "bytes"],
+      "properties": {
+        "fileName": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "pdfVersion": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "config": {
+      "type": "object",
+      "required": ["renderDpi", "maxInputBytes", "maxPages", "maxRenderedPixels", "timeoutMs", "engine", "inputMode"],
+      "properties": {
+        "renderDpi": { "type": "integer", "minimum": 150, "maximum": 600 },
+        "maxInputBytes": { "type": "integer", "minimum": 1 },
+        "maxPages": { "type": "integer", "minimum": 1 },
+        "maxRenderedPixels": { "type": "integer", "minimum": 1 },
+        "timeoutMs": { "type": "integer", "minimum": 1 },
+        "engine": { "enum": ["local", "docker"] },
+        "inputMode": { "enum": ["pdf", "rendered-pages"] }
+      },
+      "additionalProperties": false
+    },
+    "preflight": {
+      "type": "object",
+      "required": ["pages", "encrypted", "renderDpi", "textLayer", "embeddedImageCount", "contentKind", "renderedPages"],
+      "properties": {
+        "pages": { "type": "integer", "minimum": 1 },
+        "pageSizePoints": {
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": { "width": { "type": "number" }, "height": { "type": "number" } },
+          "additionalProperties": false
+        },
+        "encrypted": { "const": false },
+        "renderDpi": { "type": "integer" },
+        "textLayer": {
+          "type": "object",
+          "required": ["available", "wordCount", "chordCandidateCount"],
+          "properties": {
+            "available": { "type": "boolean" },
+            "wordCount": { "type": "integer", "minimum": 0 },
+            "chordCandidateCount": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "embeddedImageCount": { "type": "integer", "minimum": 0 },
+        "contentKind": { "enum": ["vector-or-text", "image-dominant", "mixed", "unknown"] },
+        "estimatedRenderedPixels": { "type": "integer", "minimum": 1 },
+        "renderedPages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["page", "width", "height"],
+            "properties": {
+              "page": { "type": "integer", "minimum": 1 },
+              "width": { "type": "integer", "minimum": 1 },
+              "height": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "engine": {
+      "type": "object",
+      "required": ["adapter", "executable"],
+      "properties": {
+        "adapter": { "enum": ["local-cli", "docker"] },
+        "executable": { "type": "string" },
+        "image": { "type": "string" },
+        "imageId": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["log"],
+      "properties": {
+        "log": { "const": "logs/engine.log" },
+        "textLayerChordCandidates": { "const": "text-layer/chord-candidates.json" },
+        "musicXml": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "sha256", "sourceOutput"],
+            "properties": {
+              "path": { "type": "string", "pattern": "^musicxml/candidate-[0-9]+\\.musicxml$" },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "sourceOutput": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "diagnostics": { "type": "array", "items": { "type": "object" } },
+    "commands": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": false
+}
