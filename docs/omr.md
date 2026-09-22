@@ -46,7 +46,7 @@ npm run omr:pdf -- --input "sample/pdf/score.pdf" --engine docker --docker-image
 
 - 入力ファイル名、サイズ、SHA-256、PDF version
 - ページ数、ページサイズ、暗号化有無、文字層・埋め込み画像の判定、レンダリングDPIとPNG寸法
-- 実行アダプター、Audiveris version（または固定Docker image ID）、タイムアウト、実行したコマンドの結果
+- 実行アダプター、Audiveris version（取得元を`engine.versionSource`に記録。macOSアプリは`Info.plist`、Dockerは固定image IDへフォールバック）、タイムアウト、実行したコマンドの結果
 - `musicxml/candidate-*.musicxml`と各SHA-256
 - `logs/engine.log`
 - `text-layer/chord-candidates.json`

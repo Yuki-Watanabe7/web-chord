@@ -255,6 +255,25 @@ const readMusicXmlCandidate = async (filePath) => {
 const parseEngineVersion = (output) => output.match(/Audiveris(?:\s+version)?\s*[:=]\s*([^\r\n]+)/i)?.[1]?.trim()
   ?? output.match(/Audiveris\s+([0-9][^\s]*)/i)?.[1];
 
+/**
+ * macOS jpackage launchers commonly do not write `-help` output to stdout.
+ * When the configured executable belongs to an .app bundle, retain the
+ * bundle's declared version as a reproducible engine identifier instead.
+ */
+export const readMacOsBundleVersion = async (executable) => {
+  const marker = `${path.sep}Contents${path.sep}MacOS${path.sep}`;
+  const markerIndex = path.resolve(executable).lastIndexOf(marker);
+  if (markerIndex < 0) return undefined;
+  const bundlePath = path.resolve(executable).slice(0, markerIndex);
+  if (!bundlePath.endsWith('.app')) return undefined;
+  try {
+    const info = await readFile(path.join(bundlePath, 'Contents', 'Info.plist'), 'utf8');
+    return info.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/i)?.[1]?.trim();
+  } catch {
+    return undefined;
+  }
+};
+
 const buildLocalEngineCommand = ({ audiverisBin, engineOutput, inputs }) => ({
   command: audiverisBin,
   args: ['-batch', '-export', '-output', engineOutput, '--', ...inputs],
@@ -502,7 +521,13 @@ export const runPdfOmrJob = async (options) => {
 
     if (config.engine === 'local') {
       const versionResult = requireSuccess('audiveris version', await runAndLog('audiveris -help', names.audiveris, ['-help'], { timeoutMs: Math.min(config.timeoutMs, 30_000) }));
-      engine = { ...configuredEngine, version: parseEngineVersion(`${versionResult.stdout}\n${versionResult.stderr}`) ?? 'unreported' };
+      const commandVersion = parseEngineVersion(`${versionResult.stdout}\n${versionResult.stderr}`);
+      const bundleVersion = commandVersion ? undefined : await readMacOsBundleVersion(names.audiveris);
+      engine = {
+        ...configuredEngine,
+        version: commandVersion ?? bundleVersion ?? 'unreported',
+        versionSource: commandVersion ? 'engine-cli' : bundleVersion ? 'macos-bundle-info' : 'unreported',
+      };
       const command = buildLocalEngineCommand({ audiverisBin: names.audiveris, engineOutput, inputs: engineInputs });
       requireSuccess('audiveris', await runAndLog('audiveris export', command.command, command.args));
     } else {
@@ -517,6 +542,7 @@ export const runPdfOmrJob = async (options) => {
         ...configuredEngine,
         imageId,
         version: parseEngineVersion(`${versionResult.stdout}\n${versionResult.stderr}`) ?? `container-image:${imageId}`,
+        versionSource: parseEngineVersion(`${versionResult.stdout}\n${versionResult.stderr}`) ? 'engine-cli' : 'docker-image-id',
       };
       const command = buildDockerEngineCommand({
         dockerBin: names.docker,

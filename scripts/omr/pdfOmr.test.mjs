@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { extractChordCandidates, extractTextLayer, parsePdfInfo, runPdfOmrJob } from './pdfOmr.mjs';
+import { extractChordCandidates, extractTextLayer, parsePdfInfo, readMacOsBundleVersion, runPdfOmrJob } from './pdfOmr.mjs';
 
 const createPngHeader = (width, height) => {
   const header = Buffer.alloc(24);
@@ -107,6 +107,20 @@ test('parses PDF metadata and keeps text-layer chord locations', () => {
   }]);
 });
 
+test('reads the declared version from a macOS Audiveris app bundle', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'web-chord-omr-test-'));
+  try {
+    const executable = path.join(directory, 'Audiveris.app', 'Contents', 'MacOS', 'Audiveris');
+    await mkdir(path.dirname(executable), { recursive: true });
+    await writeFile(path.join(directory, 'Audiveris.app', 'Contents', 'Info.plist'), `<?xml version="1.0"?>
+<plist><dict><key>CFBundleShortVersionString</key><string>5.11.0</string></dict></plist>`);
+    assert.equal(await readMacOsBundleVersion(executable), '5.11.0');
+    assert.equal(await readMacOsBundleVersion('audiveris'), undefined);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('creates a source-free, reproducible OMR artifact on success', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'web-chord-omr-test-'));
   try {
@@ -117,6 +131,7 @@ test('creates a source-free, reproducible OMR artifact on success', async () => 
 
     assert.equal(job.status, 'succeeded');
     assert.equal(job.engine.version, '5.4.0');
+    assert.equal(job.engine.versionSource, 'engine-cli');
     assert.deepEqual(job.preflight.renderedPages, [{ page: 1, width: 2550, height: 3300 }]);
     assert.equal(job.artifacts.musicXml.length, 1);
     assert.equal(job.artifacts.textLayerChordCandidates, 'text-layer/chord-candidates.json');

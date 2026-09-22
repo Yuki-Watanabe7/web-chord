@@ -85,7 +85,8 @@
         "executable": { "type": "string" },
         "image": { "type": "string" },
         "imageId": { "type": "string" },
-        "version": { "type": "string" }
+        "version": { "type": "string" },
+        "versionSource": { "enum": ["engine-cli", "macos-bundle-info", "docker-image-id", "unreported"] }
       },
       "additionalProperties": false
     },
