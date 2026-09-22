@@ -101,7 +101,7 @@ describe('transposeChordEvent', () => {
   });
 
   it('leaves a root-position chord without a bass note', () => {
-    const chord = { id: 'chord-1', root: 'C' as const, quality: 'major' as const, startBeat: 0, durationBeats: 4 };
+    const chord = { id: 'chord-1', root: 'C' as const, quality: 'major' as const, startTick: 0, durationTicks: 1920, startBeat: 0, durationBeats: 4 };
     expect(transposeChordEvent(chord, 2).bass).toBeUndefined();
   });
 });

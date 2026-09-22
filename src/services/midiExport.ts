@@ -1,270 +1,80 @@
 import { getChordNotes, NOTE_NAMES } from '../domain/music/chords';
-import {
-  getChordEndBeat,
-  getMelodyNoteEndBeat,
-  getTotalBeats,
-  sortChordEvents,
-  sortMelodyNotes,
-} from '../domain/music/timeline';
-import type { ChordEvent, NoteName, Song, TimeSignature } from '../domain/music/types';
+import { getSongEndTick, getTimeSignatureAtTick } from '../domain/music/timing';
+import { getChordEndTick, getMelodyNoteEndTick, sortChordEvents, sortMelodyNotes } from '../domain/music/timeline';
+import type { ChordEvent, NoteName, Song, SongKey, TimeSignature } from '../domain/music/types';
 
-const TICKS_PER_QUARTER_NOTE = 480;
 const ACCOMPANIMENT_CHANNEL = 0;
 const MELODY_CHANNEL = 1;
-
-interface MidiEvent {
-  tick: number;
-  order: number;
-  bytes: number[];
-}
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, value));
-
-const toAsciiBytes = (value: string) =>
-  Array.from(value, (character) => character.charCodeAt(0) & 0x7f);
-
-const pushUint16 = (target: number[], value: number) => {
-  target.push((value >> 8) & 0xff, value & 0xff);
-};
-
-const pushUint32 = (target: number[], value: number) => {
-  target.push(
-    (value >> 24) & 0xff,
-    (value >> 16) & 0xff,
-    (value >> 8) & 0xff,
-    value & 0xff,
-  );
-};
-
-const variableLengthQuantity = (value: number) => {
-  const bytes = [value & 0x7f];
-  let remaining = value >> 7;
-
-  while (remaining > 0) {
-    bytes.unshift((remaining & 0x7f) | 0x80);
-    remaining >>= 7;
-  }
-
-  return bytes;
-};
-
-const metaEvent = (type: number, data: number[]) => [
-  0xff,
-  type,
-  ...variableLengthQuantity(data.length),
-  ...data,
-];
-
+interface MidiEvent { tick: number; order: number; bytes: number[]; }
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const toAsciiBytes = (value: string) => Array.from(value, (character) => character.charCodeAt(0) & 0x7f);
+const pushUint16 = (target: number[], value: number) => { target.push((value >> 8) & 0xff, value & 0xff); };
+const pushUint32 = (target: number[], value: number) => { target.push((value >> 24) & 0xff, (value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff); };
+const variableLengthQuantity = (value: number) => { const bytes = [value & 0x7f]; let remaining = value >> 7; while (remaining > 0) { bytes.unshift((remaining & 0x7f) | 0x80); remaining >>= 7; } return bytes; };
+const metaEvent = (type: number, data: number[]) => [0xff, type, ...variableLengthQuantity(data.length), ...data];
 const trackNameEvent = (name: string) => metaEvent(0x03, toAsciiBytes(name));
+const programChangeEvent = (channel: number, program: number) => [0xc0 | clamp(channel, 0, 15), clamp(program, 0, 127)];
+const noteOnEvent = (channel: number, note: number, velocity: number) => [0x90 | clamp(channel, 0, 15), clamp(note, 0, 127), clamp(velocity, 0, 127)];
+const noteOffEvent = (channel: number, note: number) => [0x80 | clamp(channel, 0, 15), clamp(note, 0, 127), 0];
 
-const programChangeEvent = (channel: number, program: number) => [
-  0xc0 | clamp(channel, 0, 15),
-  clamp(program, 0, 127),
-];
-
-const noteOnEvent = (channel: number, note: number, velocity: number) => [
-  0x90 | clamp(channel, 0, 15),
-  clamp(note, 0, 127),
-  clamp(velocity, 0, 127),
-];
-
-const noteOffEvent = (channel: number, note: number) => [
-  0x80 | clamp(channel, 0, 15),
-  clamp(note, 0, 127),
-  0,
-];
-
-const ticksPerTimelineBeat = (timeSignature: TimeSignature) =>
-  Math.round(TICKS_PER_QUARTER_NOTE * (4 / timeSignature.beatUnit));
-
-const beatToTick = (beat: number, timeSignature: TimeSignature) =>
-  Math.max(0, Math.round(beat * ticksPerTimelineBeat(timeSignature)));
-
-const microsecondsPerQuarterNote = (song: Song) => {
-  const timelineBeatMs = (60 / Math.max(1, song.bpm)) * 1000;
-  return Math.round(timelineBeatMs * 1000 * (song.timeSignature.beatUnit / 4));
+const microsecondsPerQuarterNote = (bpm: number, signature: TimeSignature) =>
+  Math.round((60_000_000 / Math.max(1, bpm)) * (signature.beatUnit / 4));
+const tempoEvent = (bpm: number, signature: TimeSignature) => {
+  const tempo = clamp(microsecondsPerQuarterNote(bpm, signature), 1, 0xffffff);
+  return metaEvent(0x51, [(tempo >> 16) & 0xff, (tempo >> 8) & 0xff, tempo & 0xff]);
 };
+const timeSignatureEvent = (timeSignature: TimeSignature) => metaEvent(0x58, [
+  clamp(timeSignature.beatsPerMeasure, 1, 255), clamp(Math.round(Math.log2(timeSignature.beatUnit)), 0, 255), 24, 8,
+]);
+const MAJOR_KEY_SIGNATURES: Record<NoteName, number> = { C: 0, 'C#': 7, D: 2, 'D#': -3, E: 4, F: -1, 'F#': 6, G: 1, 'G#': -4, A: 3, 'A#': -2, B: 5 };
+const MINOR_KEY_SIGNATURES: Record<NoteName, number> = { C: -3, 'C#': 4, D: -1, 'D#': 6, E: 0, F: 1, 'F#': 3, G: -2, 'G#': 5, A: 0, 'A#': -5, B: 2 };
+const keySignatureEvent = (key: SongKey) => metaEvent(0x59, [
+  (key.mode === 'minor' ? MINOR_KEY_SIGNATURES[key.tonic] : MAJOR_KEY_SIGNATURES[key.tonic]) & 0xff,
+  key.mode === 'minor' ? 1 : 0,
+]);
 
-const tempoEvent = (song: Song) => {
-  const tempo = clamp(microsecondsPerQuarterNote(song), 1, 0xffffff);
-
-  return metaEvent(0x51, [
-    (tempo >> 16) & 0xff,
-    (tempo >> 8) & 0xff,
-    tempo & 0xff,
-  ]);
-};
-
-const timeSignatureEvent = (timeSignature: TimeSignature) => {
-  const denominatorPower = Math.max(0, Math.round(Math.log2(timeSignature.beatUnit)));
-
-  return metaEvent(0x58, [
-    clamp(timeSignature.beatsPerMeasure, 1, 255),
-    clamp(denominatorPower, 0, 255),
-    24,
-    8,
-  ]);
-};
-
-const BASS_OCTAVE = 2;
-
-const noteNameToMidiNumber = (pitch: NoteName, octave: number) =>
-  clamp((octave + 1) * 12 + NOTE_NAMES.indexOf(pitch), 0, 127);
-
+const noteNameToMidiNumber = (pitch: NoteName, octave: number) => clamp((octave + 1) * 12 + NOTE_NAMES.indexOf(pitch), 0, 127);
 const chordToMidiNumbers = (chord: ChordEvent) => {
-  const rootNote = noteNameToMidiNumber(chord.root, 3);
-
-  return getChordNotes(chord.root, chord.quality).map((noteName) => {
-    let noteNumber = noteNameToMidiNumber(noteName, 3);
-
-    while (noteNumber < rootNote) {
-      noteNumber += 12;
-    }
-
-    return clamp(noteNumber, 0, 127);
-  });
+  const root = noteNameToMidiNumber(chord.root, 3);
+  return getChordNotes(chord.root, chord.quality).map((name) => { let midi = noteNameToMidiNumber(name, 3); while (midi < root) midi += 12; return clamp(midi, 0, 127); });
 };
-
-const chordBassMidiNumber = (chord: ChordEvent) =>
-  chord.bass ? noteNameToMidiNumber(chord.bass, BASS_OCTAVE) : null;
-
-const createNoteEvents = (
-  startTick: number,
-  endTick: number,
-  channel: number,
-  note: number,
-  velocity: number,
-): MidiEvent[] => {
-  if (endTick <= startTick) {
-    return [];
-  }
-
-  return [
-    {
-      tick: startTick,
-      order: 2,
-      bytes: noteOnEvent(channel, note, velocity),
-    },
-    {
-      tick: endTick,
-      order: 1,
-      bytes: noteOffEvent(channel, note),
-    },
-  ];
-};
-
+const noteEvents = (startTick: number, endTick: number, channel: number, note: number, velocity: number): MidiEvent[] => endTick <= startTick ? [] : [
+  { tick: startTick, order: 2, bytes: noteOnEvent(channel, note, velocity) },
+  { tick: endTick, order: 1, bytes: noteOffEvent(channel, note) },
+];
 const createChordTrackEvents = (song: Song): MidiEvent[] => {
-  const totalBeats = getTotalBeats(song);
-
-  return sortChordEvents(song.chords).flatMap((chord): MidiEvent[] => {
-    if (chord.startBeat >= totalBeats || chord.durationBeats <= 0) {
-      return [];
-    }
-
-    const startTick = beatToTick(chord.startBeat, song.timeSignature);
-    const endTick = beatToTick(
-      Math.min(getChordEndBeat(chord), totalBeats),
-      song.timeSignature,
-    );
-    const bassNote = chordBassMidiNumber(chord);
-    const notes = bassNote === null ? chordToMidiNumbers(chord) : [...chordToMidiNumbers(chord), bassNote];
-
-    return notes.flatMap((note) =>
-      createNoteEvents(startTick, endTick, ACCOMPANIMENT_CHANNEL, note, 72),
-    );
+  const end = getSongEndTick(song);
+  return sortChordEvents(song.chords).flatMap((chord) => {
+    if (chord.startTick >= end || chord.durationTicks <= 0) return [];
+    const notes = chord.bass ? [...chordToMidiNumbers(chord), noteNameToMidiNumber(chord.bass, 2)] : chordToMidiNumbers(chord);
+    return notes.flatMap((note) => noteEvents(chord.startTick, Math.min(getChordEndTick(chord), end), ACCOMPANIMENT_CHANNEL, note, 72));
   });
 };
-
 const createMelodyTrackEvents = (song: Song): MidiEvent[] => {
-  const totalBeats = getTotalBeats(song);
-
-  return sortMelodyNotes(song.melodyNotes).flatMap((note): MidiEvent[] => {
-    if (note.startBeat >= totalBeats || note.durationBeats <= 0) {
-      return [];
-    }
-
-    const startTick = beatToTick(note.startBeat, song.timeSignature);
-    const endTick = beatToTick(
-      Math.min(getMelodyNoteEndBeat(note), totalBeats),
-      song.timeSignature,
-    );
-    const noteNumber = noteNameToMidiNumber(note.pitch, note.octave);
-    const velocity = Math.round(clamp(note.velocity, 0, 1) * 127);
-
-    return createNoteEvents(startTick, endTick, MELODY_CHANNEL, noteNumber, velocity);
-  });
+  const end = getSongEndTick(song);
+  return sortMelodyNotes(song.melodyNotes).flatMap((note) => note.startTick >= end || note.durationTicks <= 0 ? [] :
+    noteEvents(note.startTick, Math.min(getMelodyNoteEndTick(note), end), MELODY_CHANNEL, noteNameToMidiNumber(note.pitch, note.octave), Math.round(clamp(note.velocity, 0, 1) * 127)));
 };
-
 const createTrackChunk = (events: MidiEvent[]) => {
-  const sortedEvents = [...events].sort((a, b) => {
-    if (a.tick !== b.tick) {
-      return a.tick - b.tick;
-    }
-
-    return a.order - b.order;
-  });
-  const body: number[] = [];
-  let previousTick = 0;
-
-  sortedEvents.forEach((event) => {
-    body.push(...variableLengthQuantity(event.tick - previousTick), ...event.bytes);
-    previousTick = event.tick;
-  });
-
+  const body: number[] = []; let previousTick = 0;
+  [...events].sort((a, b) => a.tick - b.tick || a.order - b.order).forEach((event) => { body.push(...variableLengthQuantity(event.tick - previousTick), ...event.bytes); previousTick = event.tick; });
   body.push(0, ...metaEvent(0x2f, []));
-
-  const track: number[] = toAsciiBytes('MTrk');
-  pushUint32(track, body.length);
-  track.push(...body);
-
-  return track;
+  const track = toAsciiBytes('MTrk'); pushUint32(track, body.length); track.push(...body); return track;
 };
-
-const createHeaderChunk = (trackCount: number) => {
-  const header: number[] = toAsciiBytes('MThd');
-
-  pushUint32(header, 6);
-  pushUint16(header, 1);
-  pushUint16(header, trackCount);
-  pushUint16(header, TICKS_PER_QUARTER_NOTE);
-
-  return header;
+const createHeaderChunk = (trackCount: number, ticksPerQuarter: number) => {
+  const header = toAsciiBytes('MThd'); pushUint32(header, 6); pushUint16(header, 1); pushUint16(header, trackCount); pushUint16(header, clamp(ticksPerQuarter, 1, 0x7fff)); return header;
 };
-
-const createMetaTrack = (song: Song) =>
-  createTrackChunk([
-    { tick: 0, order: 0, bytes: trackNameEvent('Tempo') },
-    { tick: 0, order: 1, bytes: tempoEvent(song) },
-    { tick: 0, order: 2, bytes: timeSignatureEvent(song.timeSignature) },
-  ]);
-
-const createAccompanimentTrack = (song: Song) =>
-  createTrackChunk([
-    { tick: 0, order: 0, bytes: trackNameEvent('Chords') },
-    { tick: 0, order: 1, bytes: programChangeEvent(ACCOMPANIMENT_CHANNEL, 0) },
-    ...createChordTrackEvents(song),
-  ]);
-
-const createMelodyTrack = (song: Song) =>
-  createTrackChunk([
-    { tick: 0, order: 0, bytes: trackNameEvent('Melody') },
-    { tick: 0, order: 1, bytes: programChangeEvent(MELODY_CHANNEL, 0) },
-    ...createMelodyTrackEvents(song),
-  ]);
-
+const createMetaTrack = (song: Song) => createTrackChunk([
+  { tick: 0, order: 0, bytes: trackNameEvent('Tempo') },
+  ...song.tempoEvents.map((event) => ({ tick: event.tick, order: 1, bytes: tempoEvent(event.bpm, getTimeSignatureAtTick(song, event.tick)) })),
+  ...song.timeSignatureEvents.map((event) => ({ tick: event.tick, order: 2, bytes: timeSignatureEvent(event.timeSignature) })),
+  ...song.keySignatureEvents.map((event) => ({ tick: event.tick, order: 3, bytes: keySignatureEvent(event.key) })),
+]);
+const createAccompanimentTrack = (song: Song) => createTrackChunk([{ tick: 0, order: 0, bytes: trackNameEvent('Chords') }, { tick: 0, order: 1, bytes: programChangeEvent(ACCOMPANIMENT_CHANNEL, 0) }, ...createChordTrackEvents(song)]);
+const createMelodyTrack = (song: Song) => createTrackChunk([{ tick: 0, order: 0, bytes: trackNameEvent('Melody') }, { tick: 0, order: 1, bytes: programChangeEvent(MELODY_CHANNEL, 0) }, ...createMelodyTrackEvents(song)]);
 export const createMidiFile = (song: Song) => {
   const tracks = [createMetaTrack(song), createAccompanimentTrack(song), createMelodyTrack(song)];
-  const bytes = [...createHeaderChunk(tracks.length), ...tracks.flat()];
-
-  return new Uint8Array(bytes);
+  return new Uint8Array([...createHeaderChunk(tracks.length, song.ticksPerQuarter), ...tracks.flat()]);
 };
-
-export const createMidiBlob = (song: Song) =>
-  new Blob([createMidiFile(song)], { type: 'audio/midi' });
-
-export const createMidiFileName = (song: Pick<Song, 'title'>) => {
-  const safeTitle = song.title.trim().replace(/[\\/:*?"<>|]+/g, '_');
-
-  return `${safeTitle || 'song'}.mid`;
-};
+export const createMidiBlob = (song: Song) => new Blob([createMidiFile(song)], { type: 'audio/midi' });
+export const createMidiFileName = (song: Pick<Song, 'title'>) => `${song.title.trim().replace(/[\\/:*?"<>|]+/g, '_') || 'song'}.mid`;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Song } from '../domain/music/types';
+import { createEmptySong } from '../domain/music/timeline';
 import {
   createSongExportFile,
   createSongJsonFileName,
@@ -9,41 +10,20 @@ import {
   serializeSongExportFile,
 } from './songFile';
 
-const song: Song = {
-  id: 'song-1',
-  title: 'テスト曲',
-  bpm: 128,
-  timeSignature: { beatsPerMeasure: 3, beatUnit: 4 },
-  totalMeasures: 8,
+const song: Song = createEmptySong({
+  id: 'song-1', title: 'テスト曲', bpm: 128,
+  timeSignature: { beatsPerMeasure: 3, beatUnit: 4 }, totalMeasures: 8,
   key: { tonic: 'A', mode: 'minor' },
-  chords: [
-    {
-      id: 'chord-1',
-      root: 'A',
-      quality: 'minor',
-      startBeat: 0,
-      durationBeats: 3,
-    },
-  ],
-  melodyNotes: [
-    {
-      id: 'melody-1',
-      pitch: 'C',
-      octave: 5,
-      startBeat: 1.5,
-      durationBeats: 0.5,
-      velocity: 0.8,
-    },
-  ],
-  createdAt: '2026-07-01T00:00:00.000Z',
-  updatedAt: '2026-07-02T00:00:00.000Z',
-};
+  chords: [{ id: 'chord-1', root: 'A', quality: 'minor', startTick: 0, durationTicks: 1440 }],
+  melodyNotes: [{ id: 'melody-1', pitch: 'C', octave: 5, startTick: 720, durationTicks: 240, velocity: 0.8 }],
+  createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-02T00:00:00.000Z',
+});
 
 describe('songFile', () => {
   it('wraps a single song in the versioned export envelope', () => {
     expect(createSongExportFile([song], '2026-07-14T00:00:00.000Z')).toEqual({
       format: 'web-chord',
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: '2026-07-14T00:00:00.000Z',
       songs: [song],
     });
@@ -67,7 +47,7 @@ describe('songFile', () => {
   });
 
   it('identifies files made by a newer version', () => {
-    const result = parseSongExportFile(JSON.stringify({ format: 'web-chord', schemaVersion: 2, songs: [] }));
+    const result = parseSongExportFile(JSON.stringify({ format: 'web-chord', schemaVersion: 3, songs: [] }));
 
     expect(result).toMatchObject({ ok: false, code: 'newer-schema-version' });
   });

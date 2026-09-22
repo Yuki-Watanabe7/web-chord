@@ -1,10 +1,11 @@
 import { isChordQuality, isNoteName, isSongKeyMode } from '../domain/music/chords';
 import { normalizeSong } from '../domain/music/migration';
+import { isNonNegativeInteger, isPositiveInteger, validateSongTiming } from '../domain/music/timing';
 import { MAX_TOTAL_MEASURES } from '../domain/music/timeline';
 import type { Song } from '../domain/music/types';
 
 export const SONG_EXPORT_FORMAT = 'web-chord';
-export const SONG_EXPORT_SCHEMA_VERSION = 1;
+export const SONG_EXPORT_SCHEMA_VERSION = 2;
 export const MAX_SONG_EXPORT_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_SONG_EXPORT_SONGS = 200;
 
@@ -78,8 +79,15 @@ const isValidChordEvent = (value: unknown) => {
     isNoteName(value.root) &&
     isChordQuality(value.quality) &&
     (value.bass === undefined || isNoteName(value.bass)) &&
-    isNonNegativeNumber(value.startBeat) &&
-    isPositiveNumber(value.durationBeats)
+    (
+      (isNonNegativeInteger(value.startTick) && isPositiveInteger(value.durationTicks)) ||
+      (isNonNegativeNumber(value.startBeat) && isPositiveNumber(value.durationBeats))
+    ) &&
+    (value.tie === undefined || (
+      isRecord(value.tie) &&
+      isNonEmptyString(value.tie.id) &&
+      (value.tie.type === 'start' || value.tie.type === 'continue' || value.tie.type === 'stop')
+    ))
   );
 };
 
@@ -92,8 +100,10 @@ const isValidMelodyNote = (value: unknown) => {
     isNonEmptyString(value.id) &&
     isNoteName(value.pitch) &&
     isPositiveNumber(value.octave) &&
-    isNonNegativeNumber(value.startBeat) &&
-    isPositiveNumber(value.durationBeats) &&
+    (
+      (isNonNegativeInteger(value.startTick) && isPositiveInteger(value.durationTicks)) ||
+      (isNonNegativeNumber(value.startBeat) && isPositiveNumber(value.durationBeats))
+    ) &&
     isNonNegativeNumber(value.velocity) &&
     value.velocity <= 1
   );
@@ -114,7 +124,36 @@ const hasValidEventModel = (value: Record<string, unknown>) => {
   );
 };
 
-const hasValidSongShape = (value: unknown) => {
+const isValidMeasure = (value: unknown) =>
+  isRecord(value) && isNonNegativeInteger(value.startTick) && isPositiveInteger(value.durationTicks);
+
+const isValidTimeSignatureEvent = (value: unknown) =>
+  isRecord(value) && isNonNegativeInteger(value.tick) && isValidTimeSignature(value.timeSignature);
+
+const isValidKeySignatureEvent = (value: unknown) =>
+  isRecord(value) && isNonNegativeInteger(value.tick) && isValidSongKey(value.key);
+
+const isValidTempoEvent = (value: unknown) =>
+  isRecord(value) && isNonNegativeInteger(value.tick) && isPositiveNumber(value.bpm);
+
+const hasValidPreciseTiming = (value: Record<string, unknown>) =>
+  isPositiveInteger(value.ticksPerQuarter) &&
+  isNonNegativeInteger(value.pickupTicks) &&
+  Array.isArray(value.measures) &&
+  value.measures.length >= 1 &&
+  value.measures.length <= MAX_TOTAL_MEASURES &&
+  value.measures.every(isValidMeasure) &&
+  Array.isArray(value.timeSignatureEvents) &&
+  value.timeSignatureEvents.some((event) => isRecord(event) && event.tick === 0) &&
+  value.timeSignatureEvents.every(isValidTimeSignatureEvent) &&
+  Array.isArray(value.keySignatureEvents) &&
+  value.keySignatureEvents.some((event) => isRecord(event) && event.tick === 0) &&
+  value.keySignatureEvents.every(isValidKeySignatureEvent) &&
+  Array.isArray(value.tempoEvents) &&
+  value.tempoEvents.some((event) => isRecord(event) && event.tick === 0) &&
+  value.tempoEvents.every(isValidTempoEvent);
+
+const hasValidSongShape = (value: unknown, schemaVersion: number) => {
   if (!isRecord(value)) {
     return false;
   }
@@ -131,7 +170,8 @@ const hasValidSongShape = (value: unknown) => {
     Number(value.totalMeasures) >= 1 &&
     Number(value.totalMeasures) <= MAX_TOTAL_MEASURES &&
     (value.key === undefined || isValidSongKey(value.key)) &&
-    (hasCurrentModel || hasLegacyModel)
+    (hasCurrentModel || hasLegacyModel) &&
+    (schemaVersion === 1 || hasValidPreciseTiming(value))
   );
 };
 
@@ -190,7 +230,7 @@ export const parseSongExportFile = (value: string): SongExportParseResult => {
     );
   }
 
-  if (schemaVersion !== SONG_EXPORT_SCHEMA_VERSION) {
+  if (schemaVersion !== 1 && schemaVersion !== SONG_EXPORT_SCHEMA_VERSION) {
     return parseError('unsupported-schema-version', '対応していないファイル形式のバージョンです。');
   }
 
@@ -206,7 +246,7 @@ export const parseSongExportFile = (value: string): SongExportParseResult => {
     return parseError('too-many-songs', `一度に読み込める楽曲は${MAX_SONG_EXPORT_SONGS}件までです。`);
   }
 
-  if (!parsed.songs.every(hasValidSongShape)) {
+  if (!parsed.songs.every((song) => hasValidSongShape(song, schemaVersion))) {
     return parseError('invalid-song', '楽曲データに不足または不正な項目があるため、読み込みを中止しました。');
   }
 
@@ -222,6 +262,9 @@ export const parseSongExportFile = (value: string): SongExportParseResult => {
     exportedAt: parsed.exportedAt,
   };
 };
+
+/** Non-destructive timing diagnostics for imported or stored songs. */
+export const getSongTimingWarnings = (song: Song) => validateSongTiming(song);
 
 export const sanitizeSongFileName = (title: string, fallback = 'song') => {
   const sanitized = title

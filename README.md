@@ -49,8 +49,8 @@ JSONはweb-chordで後から編集を再開するための完全な楽曲デー�
 
 MIDI書き出しでは、現在の `Song` モデルをそのまま標準MIDIファイルへ変換します。
 
-- `Song.bpm` をテンポイベントへ反映
-- `Song.timeSignature` を拍子イベントへ反映
+- `Song.tempoEvents` をテンポイベントへ反映
+- `Song.timeSignatureEvents` と `Song.keySignatureEvents` を拍子・キーイベントへ反映
 - `ChordEvent[]` を `Chords` トラックへ出力
 - `MelodyNote[]` を `Melody` トラックへ出力
 
@@ -96,23 +96,24 @@ src/
 
 ## Domain Model
 
-曲データはUIグリッドではなく、拍位置ベースのイベントモデルで扱います。
+曲データはUIグリッドではなく、整数tick位置のイベントモデルで扱います。新規曲は四分音符=480 tickです。エディタの拍・0.5拍スナップは入力用の表示であり、JSONへ保存するイベント時刻はtickのみです。そのため、インポートした三連符などを画面表示のために丸めません。
 
 ```ts
 export interface ChordEvent {
   id: string;
   root: NoteName;
   quality: ChordQuality;
-  startBeat: number;
-  durationBeats: number;
+  startTick: number;
+  durationTicks: number;
 }
 
 export interface MelodyNote {
   id: string;
   pitch: NoteName;
   octave: number;
-  startBeat: number;
-  durationBeats: number;
+  startTick: number;
+  durationTicks: number;
+  tie?: { id: string; type: 'start' | 'continue' | 'stop' };
   velocity: number;
 }
 
@@ -125,12 +126,20 @@ export interface Song {
     beatUnit: number;
   };
   totalMeasures: number;
+  ticksPerQuarter: number;
+  pickupTicks: number;
+  measures: Array<{ startTick: number; durationTicks: number }>;
+  timeSignatureEvents: Array<{ tick: number; timeSignature: TimeSignature }>;
+  keySignatureEvents: Array<{ tick: number; key: SongKey }>;
+  tempoEvents: Array<{ tick: number; bpm: number }>;
   chords: ChordEvent[];
   melodyNotes: MelodyNote[];
   createdAt: string;
   updatedAt: string;
 }
 ```
+
+JSON書き出し形式はschema version 2です。version 1以前の拍ベース保存データは読み込み時に整数tickへ移行します。形式の機械可読な定義は[`schemas/song-v2.schema.json`](schemas/song-v2.schema.json)です。
 
 ## Development
 

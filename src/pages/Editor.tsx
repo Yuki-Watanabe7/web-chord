@@ -9,6 +9,7 @@ import { TransportControls } from '../components/editor/TransportControls';
 import type { ResolvedTemplateChord } from '../domain/music/chordProgressionTemplates';
 import {
   changeSongKey,
+  changeSongTempo,
   changeSongTimeSignature,
   changeSongTotalMeasures,
   canPasteMeasureRangeClipboard,
@@ -328,7 +329,7 @@ function Editor() {
           songKey={song.key}
           chordDisplayMode={chordDisplayMode}
           onTitleChange={(title) => setSong((prev) => ({ ...prev, title }))}
-          onBpmChange={(bpm) => setSong((prev) => ({ ...prev, bpm }))}
+          onBpmChange={(bpm) => setSong((prev) => changeSongTempo(prev, bpm))}
           onTimeSignatureChange={handleTimeSignatureChange}
           onTotalMeasuresChange={handleTotalMeasuresChange}
           onMeasuresPerRowChange={setMeasuresPerRow}

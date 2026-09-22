@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://web-chord.app/schema/song-v2.json",
+  "title": "web-chord Song v2",
+  "type": "object",
+  "required": [
+    "id", "title", "bpm", "timeSignature", "totalMeasures", "key",
+    "ticksPerQuarter", "pickupTicks", "measures", "timeSignatureEvents",
+    "keySignatureEvents", "tempoEvents", "chords", "melodyNotes", "createdAt", "updatedAt"
+  ],
+  "properties": {
+    "ticksPerQuarter": { "type": "integer", "minimum": 1, "maximum": 32767 },
+    "pickupTicks": { "type": "integer", "minimum": 0 },
+    "measures": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/measure" } },
+    "timeSignatureEvents": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/timeSignatureEvent" } },
+    "keySignatureEvents": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/keySignatureEvent" } },
+    "tempoEvents": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tempoEvent" } },
+    "chords": { "type": "array", "items": { "$ref": "#/$defs/chordEvent" } },
+    "melodyNotes": { "type": "array", "items": { "$ref": "#/$defs/melodyNote" } }
+  },
+  "$defs": {
+    "tickRange": { "type": "integer", "minimum": 0 },
+    "measure": { "type": "object", "required": ["startTick", "durationTicks"], "properties": { "startTick": { "$ref": "#/$defs/tickRange" }, "durationTicks": { "type": "integer", "minimum": 1 } } },
+    "timeSignatureEvent": { "type": "object", "required": ["tick", "timeSignature"], "properties": { "tick": { "$ref": "#/$defs/tickRange" }, "timeSignature": { "type": "object", "required": ["beatsPerMeasure", "beatUnit"], "properties": { "beatsPerMeasure": { "type": "integer", "minimum": 1 }, "beatUnit": { "type": "integer", "minimum": 1 } } } } },
+    "keySignatureEvent": { "type": "object", "required": ["tick", "key"], "properties": { "tick": { "$ref": "#/$defs/tickRange" }, "key": { "type": "object", "required": ["tonic", "mode"] } } },
+    "tempoEvent": { "type": "object", "required": ["tick", "bpm"], "properties": { "tick": { "$ref": "#/$defs/tickRange" }, "bpm": { "type": "number", "exclusiveMinimum": 0 } } },
+    "timed": { "type": "object", "required": ["startTick", "durationTicks"], "properties": { "startTick": { "$ref": "#/$defs/tickRange" }, "durationTicks": { "type": "integer", "minimum": 1 } } },
+    "chordEvent": { "allOf": [{ "$ref": "#/$defs/timed" }] },
+    "melodyNote": { "allOf": [{ "$ref": "#/$defs/timed" }] }
+  }
+}
