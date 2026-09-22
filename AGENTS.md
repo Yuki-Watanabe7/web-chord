@@ -98,3 +98,8 @@ The intended workflow is:
 4. save locally or export MIDI
 
 Music-theory assistance should be embedded in the editing experience. Current implementation highlights chord tones; likely future improvements include scale-tone highlighting and suggested melody notes.
+
+## GitHub pull request body integrity
+
+- Do not pass escaped newline sequences such as `\n` directly as a GitHub CLI pull-request body. Prepare Markdown with actual line breaks and pass it with `--body-file`.
+- Immediately after creating or editing a pull request, read its body back from GitHub and verify that it renders with the intended section breaks and contains no literal escaped newline sequences before reporting completion.
