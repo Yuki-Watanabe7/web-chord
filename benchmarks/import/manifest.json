@@ -1,0 +1,126 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": 1,
+  "benchmarkId": "protected-score-import-v1",
+  "description": "Issue #36: code, melody, and score-structure benchmark for three locally held scores.",
+  "ticksPerQuarter": 480,
+  "tolerances": {
+    "onsetTicks": 30,
+    "durationTicks": 30
+  },
+  "sources": [
+    {
+      "id": "sekai-ga-hitotsu-ni-naru-made",
+      "title": "世界がひとつになるまで",
+      "fileName": "世界がひとつになるまで.pdf",
+      "localPath": "sample/pdf/世界がひとつになるまで.pdf",
+      "sha256": "268470b174d8583517be09f073b20a833025bde1925aa2e61e1fe349cda2b114",
+      "pages": 2,
+      "origin": "User-provided local evaluation copy; PDF metadata identifies a Finale source and HIBIKI Music Supply production.",
+      "redistribution": "prohibited",
+      "difficultyRegions": [
+        {
+          "measureStart": 1,
+          "measureEnd": 4,
+          "difficultyTags": ["clean-engraving", "slash-chords", "sixteenth-notes"],
+          "notes": "Initial proof segment with clear engraving and multiple chord changes per measure."
+        },
+        {
+          "measureStart": 25,
+          "measureEnd": 29,
+          "difficultyTags": ["repeat-endings", "playback-order"],
+          "notes": "First and second endings must be expanded into the performed measure order."
+        }
+      ],
+      "evaluationSegments": [
+        {
+          "id": "intro-m1",
+          "measureStart": 1,
+          "measureEnd": 1,
+          "difficultyTags": ["clean-engraving", "slash-chords", "sixteenth-notes"],
+          "fixture": "fixtures/sekai-ga-hitotsu-ni-naru-made.intro-m1.json"
+        }
+      ]
+    },
+    {
+      "id": "charismax",
+      "title": "カリスマックス",
+      "fileName": "カリスマックス.pdf",
+      "localPath": "sample/pdf/カリスマックス.pdf",
+      "sha256": "768c67d7be7c2f44607e571d019af14017df999383963e2d28ceee338876bfd5",
+      "pages": 5,
+      "origin": "User-provided local evaluation copy; PDF metadata identifies a Finale source and HIBIKI Music Supply production.",
+      "redistribution": "prohibited",
+      "difficultyRegions": [
+        {
+          "measureStart": 12,
+          "measureEnd": 17,
+          "difficultyTags": ["triplets", "dense-rhythm", "repeat-start"],
+          "notes": "Triplet groups and dense vocal rhythm around rehearsal mark A."
+        },
+        {
+          "measureStart": 67,
+          "measureEnd": 86,
+          "difficultyTags": ["dal-segno", "coda", "key-change", "three-flats"],
+          "notes": "D.S. navigation followed by a late modulation from two sharps to three flats."
+        }
+      ],
+      "evaluationSegments": [
+        {
+          "id": "hook-m19",
+          "measureStart": 19,
+          "measureEnd": 19,
+          "difficultyTags": ["two-chords-per-measure", "repeated-eighth-notes"],
+          "fixture": "fixtures/charismax.hook-m19.json"
+        }
+      ]
+    },
+    {
+      "id": "automatic",
+      "title": "Automatic",
+      "fileName": "Automatic.pdf",
+      "localPath": "sample/pdf/Automatic.pdf",
+      "sha256": "b927162911cfd804178baffac255d290251a8dc7b4c8e2a078c2184f5d2b052c",
+      "pages": 5,
+      "origin": "User-provided local evaluation copy from print-gakufu.com; PDF metadata identifies YAMAHA and document XC00220886SC1.",
+      "redistribution": "prohibited",
+      "difficultyRegions": [
+        {
+          "measureStart": 1,
+          "measureEnd": 12,
+          "difficultyTags": ["image-based-score", "four-flats", "syncopation", "ties"],
+          "notes": "Image-dominant pages with flat spellings, off-beat melody entries, and ties."
+        },
+        {
+          "measureStart": 25,
+          "measureEnd": 45,
+          "difficultyTags": ["repeat-endings", "dal-segno", "coda", "playback-order"],
+          "notes": "Multiple endings and D.S./Coda navigation require performed-order expansion."
+        }
+      ],
+      "evaluationSegments": [
+        {
+          "id": "intro-m3",
+          "measureStart": 3,
+          "measureEnd": 3,
+          "difficultyTags": ["image-based-score", "four-flats", "syncopation"],
+          "fixture": "fixtures/automatic.intro-m3.json"
+        }
+      ]
+    }
+  ],
+  "candidateSets": [
+    {
+      "id": "regression-probe-v1",
+      "description": "Synthetic converter output with deliberate errors used to regression-test every report path.",
+      "converter": {
+        "name": "fixture-regression-probe",
+        "version": "1.0.0",
+        "options": {
+          "purpose": "evaluator-regression"
+        }
+      },
+      "directory": "candidates/regression-probe-v1"
+    }
+  ]
+}

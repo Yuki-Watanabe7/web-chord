@@ -1,0 +1,41 @@
+{
+  "$schema": "../fixture.schema.json",
+  "schemaVersion": 1,
+  "scoreId": "automatic",
+  "segment": {
+    "id": "intro-m3",
+    "sourcePage": 1,
+    "sourceSystem": 1,
+    "measureStart": 3,
+    "measureEnd": 3
+  },
+  "ppq": 480,
+  "measures": [
+    {
+      "number": 3,
+      "durationTicks": 1920,
+      "timeSignature": { "beats": 4, "beatType": 4 },
+      "key": { "fifths": -4, "mode": "minor" },
+      "tempoBpm": 96,
+      "pickupTicks": 0
+    }
+  ],
+  "chords": [
+    { "measure": 3, "onsetTick": 0, "durationTicks": 960, "symbol": "Fm7", "root": "F", "bass": null, "quality": "minor7" },
+    { "measure": 3, "onsetTick": 960, "durationTicks": 960, "symbol": "Cm7", "root": "C", "bass": null, "quality": "minor7" }
+  ],
+  "melody": [
+    { "measure": 3, "onsetTick": 480, "durationTicks": 240, "midi": 65, "tie": "none" },
+    { "measure": 3, "onsetTick": 720, "durationTicks": 240, "midi": 68, "tie": "none" },
+    { "measure": 3, "onsetTick": 960, "durationTicks": 360, "midi": 70, "tie": "none" },
+    { "measure": 3, "onsetTick": 1320, "durationTicks": 120, "midi": 72, "tie": "none" },
+    { "measure": 3, "onsetTick": 1680, "durationTicks": 240, "midi": 68, "tie": "none" }
+  ],
+  "structure": {
+    "timeSignatures": [{ "measure": 3, "onsetTick": 0, "beats": 4, "beatType": 4 }],
+    "keys": [{ "measure": 3, "onsetTick": 0, "fifths": -4, "mode": "minor" }],
+    "tempos": [{ "measure": 3, "onsetTick": 0, "bpm": 96 }],
+    "navigation": [],
+    "playbackOrder": [3]
+  }
+}
