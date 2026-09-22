@@ -53,7 +53,21 @@ npm run omr:pdf -- --input "sample/pdf/score.pdf" --engine docker --docker-image
 
 `text-layer/chord-candidates.json`には、PDF文字層から得られたコードらしい文字列だけを、ページ番号とPDFポイント座標で保存します。全文や歌詞は保存しません。この位置情報は、次のレビュー段階でMusicXMLの小節候補と照合するための補助情報です。
 
-OMRが複数のMusicXMLを出した場合は、`job.json`の`artifacts.musicXml`に全候補を残し、`multiple-musicxml-candidates`警告を返します。OMR失敗時も`job.json`とログを残して`status: "failed"`と機械可読な理由を返します。無言で停止することはありません。
+OMRが複数のMusicXMLを出した場合は、`job.json`の`artifacts.musicXml`に全候補を残し、`multiple-musicxml-candidates`警告を返します。Audiverisがメトロノーム記号をMusicXMLへ出力できない既知の警告をログに出した場合も、候補を捨てず、`diagnostics`に次の warning を追加します。これはテンポ表記を後続のレビューで確認するための契約であり、ImportDraftやレビューUIはログ全文を解析せずにこの値を表示・確認します。
+
+```json
+{
+  "severity": "warning",
+  "code": "omr-metronome-export-warning",
+  "message": "Audiverisがメトロノーム記号をMusicXMLへ出力できませんでした（4件）。テンポ表記をレビューしてください。",
+  "details": {
+    "count": 4,
+    "locations": [{ "page": 2 }, { "page": 2 }, { "page": 4 }, { "page": 4 }]
+  }
+}
+```
+
+`details.count`は検出件数、`details.locations`は各警告でログから取得できた`page`／`sheet`番号です。番号をログから取得できない場合、対応する location は空のオブジェクトになります。未知のAudiverisログ形式はこの warning に変換せず、従来どおり`logs/engine.log`へ保存します。OMR失敗時も`job.json`とログを残して`status: "failed"`と機械可読な理由を返します。無言で停止することはありません。
 
 ## 入力安全性と保持方針
 

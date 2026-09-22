@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { extractChordCandidates, extractTextLayer, parsePdfInfo, readMacOsBundleVersion, runPdfOmrJob } from './pdfOmr.mjs';
+import { extractChordCandidates, extractTextLayer, parseAudiverisMetronomeExportWarnings, parsePdfInfo, readMacOsBundleVersion, runPdfOmrJob } from './pdfOmr.mjs';
 
 const createPngHeader = (width, height) => {
   const header = Buffer.alloc(24);
@@ -49,7 +49,7 @@ const createStoredZip = (entries) => {
   return Buffer.concat([...localRecords, centralDirectory, endOfDirectory]);
 };
 
-const createRunner = ({ failEngine = false, outputFormat = 'xml' } = {}) => async (command, args) => {
+const createRunner = ({ failEngine = false, outputFormat = 'xml', engineLog = '' } = {}) => async (command, args) => {
   if (command === 'pdfinfo') {
     return { command, args, exitCode: 0, stdout: 'Pages:          1\nPage size:      612 x 792 pts (letter)\nEncrypted:      no\nPDF version:     1.7\n', stderr: '', durationMs: 1 };
   }
@@ -79,7 +79,7 @@ const createRunner = ({ failEngine = false, outputFormat = 'xml' } = {}) => asyn
     } else {
       await writeFile(path.join(outputDirectory, 'score.musicxml'), '<?xml version="1.0"?><score-partwise version="4.0"/>');
     }
-    return { command, args, exitCode: 0, stdout: 'exported', stderr: '', durationMs: 1 };
+    return { command, args, exitCode: 0, stdout: 'exported', stderr: engineLog, durationMs: 1 };
   }
   throw new Error(`Unexpected command: ${command}`);
 };
@@ -121,6 +121,17 @@ test('reads the declared version from a macOS Audiveris app bundle', async () =>
   }
 });
 
+test('parses known Audiveris metronome export warnings from a log fixture', async () => {
+  const log = await readFile(new URL('./fixtures/audiveris-metronome-export-warning.fixture', import.meta.url), 'utf8');
+  assert.deepEqual(parseAudiverisMetronomeExportWarnings(log), [
+    { page: 2 },
+    { page: 2 },
+    { page: 4 },
+    { page: 4 },
+  ]);
+  assert.deepEqual(parseAudiverisMetronomeExportWarnings('WARN Error visiting DynamicsInter in Page#1'), []);
+});
+
 test('creates a source-free, reproducible OMR artifact on success', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'web-chord-omr-test-'));
   try {
@@ -154,6 +165,36 @@ test('converts Audiveris MXL output to reviewable MusicXML', async () => {
 
     assert.equal(job.status, 'succeeded');
     assert.equal((await readFile(path.join(job.jobDirectory, 'musicxml/candidate-1.musicxml'), 'utf8')).includes('<score-partwise'), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('persists metronome export warnings without discarding MusicXML candidates', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'web-chord-omr-test-'));
+  try {
+    const inputPath = path.join(directory, 'automatic.pdf');
+    const engineLog = await readFile(new URL('./fixtures/audiveris-metronome-export-warning.fixture', import.meta.url), 'utf8');
+    await writeFile(inputPath, '%PDF-1.7\nminimal test input');
+    const job = await runPdfOmrJob({
+      inputPath,
+      outputDir: path.join(directory, 'artifacts'),
+      commandRunner: createRunner({ engineLog }),
+    });
+
+    assert.equal(job.status, 'succeeded');
+    assert.equal(job.artifacts.musicXml.length, 1);
+    assert.deepEqual(job.diagnostics, [{
+      severity: 'warning',
+      code: 'omr-metronome-export-warning',
+      message: 'Audiverisがメトロノーム記号をMusicXMLへ出力できませんでした（4件）。テンポ表記をレビューしてください。',
+      details: {
+        count: 4,
+        locations: [{ page: 2 }, { page: 2 }, { page: 4 }, { page: 4 }],
+      },
+    }]);
+    const jobManifest = JSON.parse(await readFile(path.join(job.jobDirectory, 'job.json'), 'utf8'));
+    assert.deepEqual(jobManifest.diagnostics, job.diagnostics);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

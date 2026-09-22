@@ -112,8 +112,25 @@
       },
       "additionalProperties": false
     },
-    "diagnostics": { "type": "array", "items": { "type": "object" } },
+    "diagnostics": {
+      "type": "array",
+      "description": "Structured warnings and errors. omr-metronome-export-warning uses the documented count and locations details contract.",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
     "commands": { "type": "array", "items": { "type": "object" } }
+  },
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "required": ["severity", "code", "message"],
+      "properties": {
+        "severity": { "enum": ["warning", "error"] },
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "details": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

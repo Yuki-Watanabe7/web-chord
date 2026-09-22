@@ -1,0 +1,8 @@
+WARN  [input]           PartwiseBuilder 1614 | Error visiting MetronomeInter#5239{ FROZEN(0.718/0.718) staff:4 METRONOME mFont:31 Metronome bpm1:2} in {Page#2.1}
+java.lang.NullPointerException: Cannot invoke "org.audiveris.omr.sig.inter.BeatUnitInter$Note.toMusicXml()" because "note" is null
+WARN  [input]           PartwiseBuilder 1614 | Error visiting MetronomeInter#5403{ FROZEN(0.540/0.540) staff:7 METRONOME mFont:28 Metronome bpm1:7} in {Page#2.1}
+java.lang.NullPointerException: Cannot invoke "org.audiveris.omr.sig.inter.BeatUnitInter$Note.toMusicXml()" because "note" is null
+WARN  [input]           PartwiseBuilder 1614 | Error visiting MetronomeInter#5708{ FROZEN(0.613/0.613) staff:1 METRONOME mFont:27 Metronome bpm1:5} in {Page#4.1}
+java.lang.NullPointerException: Cannot invoke "org.audiveris.omr.sig.inter.BeatUnitInter$Note.toMusicXml()" because "note" is null
+WARN  [input]           PartwiseBuilder 1614 | Error visiting MetronomeInter#5891{<invalid-internals>} in {Page#4.1}
+java.lang.NullPointerException: Cannot invoke "org.audiveris.omr.sig.inter.BeatUnitInter$Note.toMusicXml()" because "note" is null
