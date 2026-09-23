@@ -252,10 +252,13 @@ const pushIssue = (issues: ImportIssue[], severity: ImportIssue['severity'], cod
   issues.push({ severity, code, message, source });
 };
 
-const fifthsToKey = (fifths: number, mode: string): SongKey => ({
-  tonic: pitchClassToNoteName(normalizePitchClass(fifths * 7)),
-  mode: mode.toLowerCase() === 'minor' ? 'minor' : 'major',
-});
+const fifthsToKey = (fifths: number, mode: string): SongKey => {
+  const minor = mode.toLowerCase() === 'minor';
+  return {
+    tonic: pitchClassToNoteName(normalizePitchClass(fifths * 7 + (minor ? 9 : 0))),
+    mode: minor ? 'minor' : 'major',
+  };
+};
 
 const alterText = (alter: number) => alter < 0 ? '♭'.repeat(-alter) : alter > 0 ? '♯'.repeat(alter) : '';
 const isChordStep = (value: string): value is ChordStep => ['A', 'B', 'C', 'D', 'E', 'F', 'G'].includes(value);

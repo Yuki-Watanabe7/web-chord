@@ -30,9 +30,9 @@
         "properties": {
           "number": { "type": "integer", "minimum": 1 },
           "durationTicks": { "type": "integer", "minimum": 1 },
-          "timeSignature": { "$ref": "#/$defs/timeSignatureValue" },
-          "key": { "$ref": "#/$defs/keyValue" },
-          "tempoBpm": { "type": "number", "exclusiveMinimum": 0 },
+          "timeSignature": { "anyOf": [{ "$ref": "#/$defs/timeSignatureValue" }, { "type": "null" }] },
+          "key": { "anyOf": [{ "$ref": "#/$defs/keyValue" }, { "type": "null" }] },
+          "tempoBpm": { "type": ["number", "null"], "exclusiveMinimum": 0 },
           "pickupTicks": { "type": "integer", "minimum": 0 }
         },
         "additionalProperties": false

@@ -191,7 +191,7 @@ function SongList() {
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
     if (isPdf) {
       navigate('/import/review', {
-        state: { pdf: { url: URL.createObjectURL(file), fileName: file.name, size: file.size } },
+        state: { pdf: { file, fileName: file.name, size: file.size } },
       });
       return;
     }

@@ -1,0 +1,99 @@
+import type { ImportDraft, ImportIssue } from './importDraft';
+import { parseMusicXmlToImportDraft } from './musicXmlImport';
+
+export interface OmrJobCandidate {
+  path: string;
+  sha256: string;
+  sourceOutput: string;
+}
+
+export interface OmrJobArtifact {
+  contractVersion: 1;
+  jobId: string;
+  status: 'succeeded';
+  input: { fileName: string; sha256: string };
+  engine: { version: string };
+  artifacts: { musicXml: OmrJobCandidate[] };
+  diagnostics: Array<{
+    severity: 'warning' | 'error';
+    code: string;
+    message: string;
+    details?: { locations?: Array<{ page?: number; sheet?: number }> };
+  }>;
+}
+
+const sha256Pattern = /^[a-f0-9]{64}$/;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
+/** Parses the source-free job contract before any candidate is trusted. */
+export const parseOmrJobArtifact = (json: string): OmrJobArtifact => {
+  const value: unknown = JSON.parse(json);
+  if (!isRecord(value) || value.contractVersion !== 1 || value.status !== 'succeeded' ||
+    typeof value.jobId !== 'string' || !/^omr-[a-f0-9]{20}$/.test(value.jobId) ||
+    !isRecord(value.input) || typeof value.input.fileName !== 'string' ||
+    typeof value.input.sha256 !== 'string' || !sha256Pattern.test(value.input.sha256) ||
+    !isRecord(value.engine) || typeof value.engine.version !== 'string' ||
+    !isRecord(value.artifacts) || !Array.isArray(value.artifacts.musicXml) ||
+    value.artifacts.musicXml.length === 0 || !Array.isArray(value.diagnostics)) {
+    throw new Error('成功したOMRジョブの job.json を選択してください。');
+  }
+  const candidates = value.artifacts.musicXml;
+  if (!candidates.every((candidate) => isRecord(candidate) &&
+    typeof candidate.path === 'string' && /^musicxml\/candidate-[1-9][0-9]*\.musicxml$/.test(candidate.path) &&
+    typeof candidate.sha256 === 'string' && sha256Pattern.test(candidate.sha256) &&
+    typeof candidate.sourceOutput === 'string') ||
+    !value.diagnostics.every((diagnostic) => isRecord(diagnostic) &&
+      ['warning', 'error'].includes(String(diagnostic.severity)) &&
+      typeof diagnostic.code === 'string' && typeof diagnostic.message === 'string')) {
+    throw new Error('OMRジョブの候補または診断の形式が正しくありません。');
+  }
+  return value as unknown as OmrJobArtifact;
+};
+
+const sha256 = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const diagnosticIssue = (diagnostic: OmrJobArtifact['diagnostics'][number]): ImportIssue => {
+  const pages = [...new Set((diagnostic.details?.locations ?? [])
+    .map((location) => location.page ?? location.sheet)
+    .filter((page): page is number => typeof page === 'number' && Number.isInteger(page) && page > 0))];
+  return {
+    severity: diagnostic.severity,
+    code: diagnostic.code,
+    message: pages.length ? `${diagnostic.message}（PDF ${pages.join('、')}ページ）` : diagnostic.message,
+  };
+};
+
+/** Checks the selected XML bytes against job.json and retains job warnings in the review draft. */
+export const parseOmrCandidateToImportDraft = async (
+  job: OmrJobArtifact,
+  file: Pick<File, 'name' | 'text'>,
+): Promise<ImportDraft> => {
+  const candidate = job.artifacts.musicXml.find((item) => item.path === `musicxml/${file.name}`);
+  if (!candidate) throw new Error('選択したMusicXMLはこのOMRジョブの候補ではありません。');
+  const xml = await file.text();
+  if (await sha256(xml) !== candidate.sha256) {
+    throw new Error('MusicXMLのSHA-256が job.json と一致しません。');
+  }
+  const draft = parseMusicXmlToImportDraft(xml, { fileName: file.name });
+  return {
+    ...draft,
+    source: {
+      ...draft.source,
+      omrEngine: job.engine.version,
+      omrJob: {
+        jobId: job.jobId,
+        pdfFileName: job.input.fileName,
+        pdfSha256: job.input.sha256,
+        engineVersion: job.engine.version,
+        candidatePath: candidate.path,
+        candidateSha256: candidate.sha256,
+        candidateCount: job.artifacts.musicXml.length,
+      },
+    },
+    issues: [...draft.issues, ...job.diagnostics.map(diagnosticIssue)],
+  };
+};

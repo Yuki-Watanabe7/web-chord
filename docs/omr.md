@@ -69,6 +69,8 @@ OMRが複数のMusicXMLを出した場合は、`job.json`の`artifacts.musicXml`
 
 `details.count`は検出件数、`details.locations`は各警告でログから取得できた`page`／`sheet`番号です。番号をログから取得できない場合、対応する location は空のオブジェクトになります。未知のAudiverisログ形式はこの warning に変換せず、従来どおり`logs/engine.log`へ保存します。OMR失敗時も`job.json`とログを残して`status: "failed"`と機械可読な理由を返します。無言で停止することはありません。
 
+確認画面で原PDFを選んだ後、成果物の `job.json`、続いて `musicxml/candidate-*.musicxml` を選択します。画面は原PDFとjobに記録されたPDFのSHA-256、さらにMusicXMLと候補のSHA-256を照合し、候補一覧・OMR診断を表示します。OMR警告は `ImportDraft` の確認事項として保持され、Song確定前に確認できます。MusicXMLだけを直接選んだ場合はjob診断とPDF出典を紐付けられません。
+
 ## 入力安全性と保持方針
 
 - PDFヘッダー、暗号化、ページ数、サイズを処理前に確認します。

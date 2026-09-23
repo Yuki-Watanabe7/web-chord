@@ -21,7 +21,7 @@ import type {
 /** The stable shape emitted by a score importer before it is allowed to create a Song. */
 export const IMPORT_DRAFT_VERSION = 1;
 
-export type ImportReviewStatus = 'unselected' | 'auto-selected' | 'user-confirmed' | 'edited';
+export type ImportReviewStatus = 'unselected' | 'auto-selected' | 'user-confirmed' | 'edited' | 'excluded';
 
 /** A location in the source score which remains useful even after repeats are expanded. */
 export interface ImportSourceLocation {
@@ -51,6 +51,16 @@ export interface ImportSource {
   generators: string[];
   /** Populated when the generator text identifies a known OMR engine. */
   omrEngine?: string;
+  /** Verified local OMR job and exact MusicXML candidate used for this draft. */
+  omrJob?: {
+    jobId: string;
+    pdfFileName: string;
+    pdfSha256: string;
+    engineVersion: string;
+    candidatePath: string;
+    candidateSha256: string;
+    candidateCount: number;
+  };
 }
 
 export interface ImportCandidate<T> {
@@ -253,6 +263,7 @@ export const validateImportDraft = (draft: ImportDraft): ImportDraftValidation =
   });
 
   const selectedNotes = draft.candidates.melodyNotes.filter((candidate) =>
+    candidate.reviewStatus !== 'unselected' && candidate.reviewStatus !== 'excluded' &&
     candidate.source.partId === selected?.partId &&
     candidate.source.staff === selected.staff &&
     candidate.source.voice === selected.voice && !candidate.normalized.isGrace && candidate.normalized.durationTicks > 0,
@@ -364,7 +375,7 @@ export const selectImportDraftMelody = (
       ...draft.candidates,
       melodyNotes: draft.candidates.melodyNotes.map((candidate) => ({
         ...candidate,
-        reviewStatus: candidate.source.partId === selected.partId &&
+        reviewStatus: candidate.reviewStatus === 'excluded' ? 'excluded' : candidate.source.partId === selected.partId &&
           candidate.source.staff === selected.staff && candidate.source.voice === selected.voice
           ? 'user-confirmed'
           : 'unselected',
@@ -389,6 +400,71 @@ export const updateImportDraftMelodyNote = (
     } : candidate),
   },
 });
+
+/** Keeps an OMR note in the draft while excluding it from the confirmed Song. */
+export const toggleImportDraftMelodyExcluded = (draft: ImportDraft, id: string): ImportDraft => ({
+  ...draft,
+  candidates: {
+    ...draft.candidates,
+    melodyNotes: draft.candidates.melodyNotes.map((candidate) => candidate.id === id ? {
+      ...candidate,
+      reviewStatus: candidate.reviewStatus === 'excluded' ? 'user-confirmed' : 'excluded',
+    } : candidate),
+  },
+});
+
+const reviewAddedSource = (draft: ImportDraft, linearMeasureIndex: number, element: string) => {
+  const measure = draft.score.linearMeasures[linearMeasureIndex];
+  const part = draft.score.parts[0];
+  if (!measure || !part) return null;
+  return {
+    measure,
+    source: {
+      partId: part.id,
+      partName: part.name,
+      measureIndex: measure.sourceMeasureIndex,
+      measureNumber: measure.sourceMeasureNumber,
+      occurrence: measure.occurrence,
+      element,
+    },
+  };
+};
+
+/** Adds a reviewer-supplied key where MusicXML did not provide a change. */
+export const addImportDraftKeySignature = (draft: ImportDraft, linearMeasureIndex: number): ImportDraft => {
+  const position = reviewAddedSource(draft, linearMeasureIndex, 'key');
+  if (!position) return draft;
+  const { measure, source } = position;
+  return {
+    ...draft,
+    candidates: {
+      ...draft.candidates,
+      keySignatures: [...draft.candidates.keySignatures, {
+        id: `key:review:${measure.index}:${draft.candidates.keySignatures.length}`,
+        normalized: { tick: measure.startTick, key: { tonic: 'C', mode: 'major' } },
+        raw: '未認識', source, reviewStatus: 'edited',
+      }],
+    },
+  };
+};
+
+/** Adds a reviewer-supplied tempo where MusicXML did not provide one. */
+export const addImportDraftTempo = (draft: ImportDraft, linearMeasureIndex: number): ImportDraft => {
+  const position = reviewAddedSource(draft, linearMeasureIndex, 'tempo');
+  if (!position) return draft;
+  const { measure, source } = position;
+  return {
+    ...draft,
+    candidates: {
+      ...draft.candidates,
+      tempos: [...draft.candidates.tempos, {
+        id: `tempo:review:${measure.index}:${draft.candidates.tempos.length}`,
+        normalized: { tick: measure.startTick, bpm: 120 },
+        raw: '未認識', source, reviewStatus: 'edited',
+      }],
+    },
+  };
+};
 
 /** Updates timing for a chord candidate without changing its score spelling. */
 export const updateImportDraftChordTiming = (
@@ -552,6 +628,7 @@ export const confirmImportDraftToSong = (
   const selected = draft.melodySelection.selected!;
   const melodyNotes = draft.candidates.melodyNotes
     .filter((candidate) =>
+      candidate.reviewStatus !== 'unselected' && candidate.reviewStatus !== 'excluded' &&
       candidate.source.partId === selected.partId &&
       candidate.source.staff === selected.staff &&
       candidate.source.voice === selected.voice && !candidate.normalized.isGrace && candidate.normalized.durationTicks > 0,
@@ -592,7 +669,8 @@ export const confirmImportDraftToSong = (
     : 0;
   const song = createEmptySong({
     id: options.id,
-    title: options.title ?? (draft.source.fileName.replace(/\.(?:musicxml|xml|mxl)$/i, '') || '読み込み曲'),
+    title: options.title ?? ((draft.source.omrJob?.pdfFileName ?? draft.source.fileName)
+      .replace(/\.(?:pdf|musicxml|xml|mxl)$/i, '') || '読み込み曲'),
     ticksPerQuarter: draft.ticksPerQuarter,
     totalMeasures: draft.score.linearMeasures.length,
     pickupTicks,
