@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { inflateRawSync } from 'node:zlib';
+import { extractNoteQualityByScore } from './qualitySignals.mjs';
 
 export const OMR_JOB_CONTRACT_VERSION = 1;
 export const OMR_JOB_CONTRACT_SCHEMA = 'schemas/omr-job-v1.schema.json';
@@ -295,7 +296,7 @@ export const readMacOsBundleVersion = async (executable) => {
 
 const buildLocalEngineCommand = ({ audiverisBin, engineOutput, inputs }) => ({
   command: audiverisBin,
-  args: ['-batch', '-export', '-output', engineOutput, '--', ...inputs],
+  args: ['-batch', '-export', '-save', '-output', engineOutput, '--', ...inputs],
 });
 
 const buildDockerEngineCommand = ({ dockerBin, dockerImage, engineOutput, workspace, inputs }) => {
@@ -308,7 +309,7 @@ const buildDockerEngineCommand = ({ dockerBin, dockerImage, engineOutput, worksp
       '--mount', `type=bind,src=${workspace},dst=/work,readonly`,
       '--mount', `type=bind,src=${engineOutput},dst=/output`,
       dockerImage,
-      '-batch', '-export', '-output', '/output', '--', ...inputNames,
+      '-batch', '-export', '-save', '-output', '/output', '--', ...inputNames,
     ],
   };
 };
@@ -574,7 +575,7 @@ export const runPdfOmrJob = async (options) => {
     }
 
     const outputFiles = await collectFiles(engineOutput);
-    const candidateFiles = outputFiles.filter((filePath) => /\.(?:mxl|musicxml|xml)$/i.test(filePath));
+    const candidateFiles = sortNaturally(outputFiles.filter((filePath) => /\.(?:mxl|musicxml|xml)$/i.test(filePath)));
     const musicXmlArtifacts = [];
     for (const [index, filePath] of candidateFiles.entries()) {
       const xml = await readMusicXmlCandidate(filePath);
@@ -589,6 +590,38 @@ export const runPdfOmrJob = async (options) => {
     }
     if (musicXmlArtifacts.length === 0) {
       throw new OmrJobError('musicxml-not-produced', 'OMRエンジンはMusicXMLを出力しませんでした。ログを確認してください。');
+    }
+    try {
+      const projects = outputFiles.filter((filePath) => /\.omr$/i.test(filePath));
+      if (projects.length !== 1) throw new Error('Expected one saved Audiveris project');
+      const archive = await readFile(projects[0]);
+      const book = readZipEntry(archive, 'book.xml').toString('utf8');
+      const qualities = extractNoteQualityByScore(book, (number) =>
+        readZipEntry(archive, `sheet#${number}/sheet#${number}.xml`).toString('utf8'));
+      if (qualities.length !== musicXmlArtifacts.length) throw new Error('Score and MusicXML candidate counts differ');
+      const unmatched = [];
+      for (const [index, artifact] of musicXmlArtifacts.entries()) {
+        const xml = await readFile(path.join(stageDirectory, artifact.path), 'utf8');
+        const firstPart = xml.match(/<part(?=\s|>)[^>]*>([\s\S]*?)<\/part>/)?.[1];
+        const measureCount = firstPart ? [...firstPart.matchAll(/<measure(?=\s|>)/g)].length : 0;
+        if (measureCount === qualities[index].measureCount) artifact.reviewSignals = qualities[index].signals;
+        else unmatched.push(artifact.path);
+      }
+      if (unmatched.length > 0) {
+        diagnostics.push({
+          severity: 'warning',
+          code: 'omr-note-quality-unavailable',
+          message: `音符品質スコアを小節へ対応付けられない候補があります（${unmatched.join('、')}）。原譜と旋律を確認してください。`,
+        });
+      }
+    } catch (error) {
+      musicXmlArtifacts.forEach((artifact) => { delete artifact.reviewSignals; });
+      diagnostics.push({
+        severity: 'warning',
+        code: 'omr-note-quality-unavailable',
+        message: 'Audiverisの音符品質スコアを小節へ対応付けられませんでした。原譜と旋律を確認してください。',
+        details: { reason: error instanceof Error ? error.message : 'unknown' },
+      });
     }
     if (musicXmlArtifacts.length > 1) {
       diagnostics.push({

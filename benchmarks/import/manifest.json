@@ -132,6 +132,8 @@
           "renderDpi": 300,
           "inputMode": "pdf",
           "engine": "local",
+          "saveProjectForReviewGrades": true,
+          "lowHeadChordGradeThreshold": 0.8,
           "selectedCandidates": {
             "sekai-ga-hitotsu-ni-naru-made": "omr-4be10aee8cb43fa686cd/musicxml/candidate-1.musicxml",
             "charismax": "omr-49993bac3d745f8ca3a8/musicxml/candidate-1.musicxml",

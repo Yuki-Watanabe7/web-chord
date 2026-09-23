@@ -100,7 +100,7 @@ const extractSegment = (draft, fixture) => {
       tie: candidate.normalized.tie?.type ?? 'none',
     }));
   const warnings = draft.issues.filter((issue) => issue.severity === 'warning' && issue.source?.measureIndex === measure.sourceMeasureIndex)
-    .map((issue) => ({ measure: number, field: 'review', code: issue.code, message: issue.message }));
+    .map((issue) => ({ measure: number, field: issue.code === 'low-omr-note-grade' ? 'melody' : 'review', code: issue.code, message: issue.message }));
   return {
     $schema: '../fixture.schema.json',
     schemaVersion: 1,
@@ -140,6 +140,7 @@ for (const source of benchmark.manifest.sources) {
   let draft;
   const songMeasures = [];
   for (const artifact of job.artifacts.musicXml) {
+    if (!Array.isArray(artifact.reviewSignals)) throw new Error(`Missing note-quality review signals for ${source.id}/${artifact.path}`);
     const xml = await readFile(path.join(directory, artifact.path), 'utf8');
     const parsed = await parseOmrCandidateToImportDraft(job, { name: path.basename(artifact.path), text: async () => xml });
     const confirmation = confirmImportDraftToSong(parsed, { id: source.id, title: source.title });

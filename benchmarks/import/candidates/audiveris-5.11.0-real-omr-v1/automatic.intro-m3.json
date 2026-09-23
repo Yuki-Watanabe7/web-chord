@@ -113,5 +113,12 @@
       3
     ]
   },
-  "warnings": []
+  "warnings": [
+    {
+      "measure": 3,
+      "field": "melody",
+      "code": "low-omr-note-grade",
+      "message": "Audiverisの音符品質スコアが低い箇所があります（最低 0.63、1音）。原譜とこの小節の旋律を照合してください。"
+    }
+  ]
 }

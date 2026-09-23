@@ -387,8 +387,13 @@ const warningMatchesError = (warning, error) => {
 
 const evaluateWarnings = (warnings, errors) => {
   const matchedWarnings = warnings.filter((warning) => errors.some((error) => warningMatchesError(warning, error))).length;
+  const coveredErrors = errors.filter((error) => warnings.some((warning) => warningMatchesError(warning, error))).length;
+  const melodyErrors = errors.filter((error) => error.field.startsWith('melody.'));
+  const coveredMelodyErrors = melodyErrors.filter((error) => warnings.some((warning) => warningMatchesError(warning, error))).length;
   return {
     precision: ratio(matchedWarnings, warnings.length),
+    recall: ratio(coveredErrors, errors.length),
+    melodyRecall: ratio(coveredMelodyErrors, melodyErrors.length),
     warnings: warnings.length,
     warningsCoveringErrors: matchedWarnings,
   };
@@ -462,6 +467,8 @@ export const evaluateBenchmark = (benchmark, loadedCandidateSet) => {
       playbackOrder: combineRatios(scores, (score) => score.metrics.structure.playbackOrder),
     },
     warnings: combineRatios(scores, (score) => score.metrics.warnings.precision),
+    warningRecall: combineRatios(scores, (score) => score.metrics.warnings.recall),
+    melodyWarningRecall: combineRatios(scores, (score) => score.metrics.warnings.melodyRecall),
     manualCorrectionMeasures: [...new Set(errors.map((error) => `${error.scoreId}:${error.measure}`).filter((value) => !value.endsWith(':null')))].length,
     errorCount: errors.length,
   };
@@ -496,6 +503,8 @@ export const formatMarkdownReport = (report) => {
     `| Melody duration | ${percent(report.summary.melody.durationAccuracy.rate)} |`,
     `| Structure playback order | ${percent(report.summary.structure.playbackOrder.rate)} |`,
     `| Warning precision | ${report.summary.warnings.total === 0 ? 'N/A (0 warnings)' : percent(report.summary.warnings.rate)} |`,
+    `| Warning recall | ${report.summary.warningRecall.total === 0 ? 'N/A (0 errors)' : percent(report.summary.warningRecall.rate)} |`,
+    `| Melody warning recall | ${report.summary.melodyWarningRecall.total === 0 ? 'N/A (0 melody errors)' : percent(report.summary.melodyWarningRecall.rate)} |`,
     `| Measures needing correction | ${report.summary.manualCorrectionMeasures} |`,
     '',
     '## Errors by score and measure',

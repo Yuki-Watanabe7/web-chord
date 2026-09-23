@@ -5,6 +5,7 @@ export interface OmrJobCandidate {
   path: string;
   sha256: string;
   sourceOutput: string;
+  reviewSignals?: Array<{ measureIndex: number; minGrade: number; lowNoteCount: number }>;
 }
 
 export interface OmrJobArtifact {
@@ -42,7 +43,12 @@ export const parseOmrJobArtifact = (json: string): OmrJobArtifact => {
   if (!candidates.every((candidate) => isRecord(candidate) &&
     typeof candidate.path === 'string' && /^musicxml\/candidate-[1-9][0-9]*\.musicxml$/.test(candidate.path) &&
     typeof candidate.sha256 === 'string' && sha256Pattern.test(candidate.sha256) &&
-    typeof candidate.sourceOutput === 'string') ||
+    typeof candidate.sourceOutput === 'string' &&
+    (candidate.reviewSignals === undefined || Array.isArray(candidate.reviewSignals) &&
+      candidate.reviewSignals.every((signal: unknown) => isRecord(signal) &&
+        Number.isInteger(signal.measureIndex) && Number(signal.measureIndex) >= 0 &&
+        typeof signal.minGrade === 'number' && signal.minGrade >= 0 && signal.minGrade <= 1 &&
+        Number.isInteger(signal.lowNoteCount) && Number(signal.lowNoteCount) > 0))) ||
     !value.diagnostics.every((diagnostic) => isRecord(diagnostic) &&
       ['warning', 'error'].includes(String(diagnostic.severity)) &&
       typeof diagnostic.code === 'string' && typeof diagnostic.message === 'string')) {
@@ -79,6 +85,26 @@ export const parseOmrCandidateToImportDraft = async (
     throw new Error('MusicXMLのSHA-256が job.json と一致しません。');
   }
   const draft = parseMusicXmlToImportDraft(xml, { fileName: file.name });
+  const melodyPart = draft.melodySelection.selected?.partId;
+  const firstPart = draft.score.parts[0]?.id;
+  const qualityIssues: ImportIssue[] = melodyPart && melodyPart === firstPart
+    ? (candidate.reviewSignals ?? []).map((signal) => {
+      const measure = draft.score.sourceMeasures.find((item) =>
+        item.partId === firstPart && item.measureIndex === signal.measureIndex);
+      if (!measure) throw new Error('OMRジョブの音符品質情報がMusicXMLの小節と一致しません。');
+      return {
+        severity: 'warning',
+        code: 'low-omr-note-grade',
+        message: `Audiverisの音符品質スコアが低い箇所があります（最低 ${signal.minGrade.toFixed(2)}、${signal.lowNoteCount}音）。原譜とこの小節の旋律を照合してください。`,
+        source: {
+          partId: firstPart,
+          partName: draft.score.parts[0].name,
+          measureIndex: signal.measureIndex,
+          measureNumber: measure.measureNumber,
+          element: 'note',
+        },
+      } as ImportIssue;
+    }) : [];
   return {
     ...draft,
     source: {
@@ -94,6 +120,6 @@ export const parseOmrCandidateToImportDraft = async (
         candidateCount: job.artifacts.musicXml.length,
       },
     },
-    issues: [...draft.issues, ...job.diagnostics.map(diagnosticIssue)],
+    issues: [...draft.issues, ...job.diagnostics.map(diagnosticIssue), ...qualityIssues],
   };
 };

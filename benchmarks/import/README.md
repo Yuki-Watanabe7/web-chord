@@ -20,7 +20,7 @@ benchmarks/import/
 
 `regression-probe-v1`は実在するOMR変換器の精度を示すものではありません。「世界がひとつになるまで」1小節目を原譜と一致させ、他の区間には誤った音符、tick、調、タイなどを意図的に残しています。評価処理が項目別・小節別に誤りを出せることを固定するテスト入力です。
 
-`audiveris-5.11.0-real-omr-v1`は、3つのSHA-256確認済み原PDFを実際にAudiverisで処理した代表区間です。候補hash、選択根拠、曲別指標、修正内容、画面受入の残作業は[`real-omr-qualification.md`](real-omr-qualification.md)を参照してください。全曲MusicXMLや原PDFは含みません。
+`audiveris-5.11.0-real-omr-v1`は、3つのSHA-256確認済み原PDFを実際にAudiverisで処理した代表区間です。初回受入は[`real-omr-qualification.md`](real-omr-qualification.md)、音符品質警告を加えた再測定と現在の候補hashは[`omr-note-quality-qualification.md`](omr-note-quality-qualification.md)を参照してください。全曲MusicXMLや原PDFは含みません。
 
 ### Issue #49: 1小節目の照合と候補修正
 
@@ -85,7 +85,7 @@ npm run benchmark:import -- --candidate audiveris-5.11.0-real-omr-v1
 - コード: root／bass／qualityの正規化一致、原表記、onset、duration
 - 主旋律: pitch precision／recall／F1、onset、duration、tie
 - 構造: 拍子・調・テンポ変更、反復／D.S.／Coda等の記号、展開後の小節順
-- 運用: 警告のうち実誤りを指した割合、修正が必要な小節数
+- 運用: 警告のうち実誤りを指した割合、採点誤りのうち警告が覆う割合、修正が必要な小節数
 - 詳細: 曲ID、小節、項目、期待値、実値ごとの誤り一覧
 
 onsetとdurationの許容値は`manifest.json`の`tolerances`で管理します。現在はそれぞれ30 tickです。

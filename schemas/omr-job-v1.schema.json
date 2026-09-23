@@ -104,7 +104,21 @@
             "properties": {
               "path": { "type": "string", "pattern": "^musicxml/candidate-[0-9]+\\.musicxml$" },
               "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-              "sourceOutput": { "type": "string" }
+              "sourceOutput": { "type": "string" },
+              "reviewSignals": {
+                "type": "array",
+                "description": "Low Audiveris head-chord grades in the first logical part, indexed by source measure within this candidate.",
+                "items": {
+                  "type": "object",
+                  "required": ["measureIndex", "minGrade", "lowNoteCount"],
+                  "properties": {
+                    "measureIndex": { "type": "integer", "minimum": 0 },
+                    "minGrade": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "lowNoteCount": { "type": "integer", "minimum": 1 }
+                  },
+                  "additionalProperties": false
+                }
+              }
             },
             "additionalProperties": false
           }
