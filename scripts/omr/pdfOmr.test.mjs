@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -71,13 +71,19 @@ const createRunner = ({ failEngine = false, outputFormat = 'xml', engineLog = ''
     if (failEngine) return { command, args, exitCode: 1, stdout: '', stderr: 'recognition failed', durationMs: 1 };
     const outputIndex = args.indexOf('-output');
     const outputDirectory = args[outputIndex + 1];
+    assert.equal(args.includes('-save'), true);
+    await writeFile(path.join(outputDirectory, 'score.omr'), createStoredZip([
+      ['book.xml', '<book><score><logical-part id="1"><staff-configuration/></logical-part><page sheet-number="1" sheet-page-id="1"/></score></book>'],
+      ['sheet#1/sheet#1.xml', '<sheet><page id="1"><system><stack id="1"></stack><part id="1"><measure id="1"><head-chords>10</head-chords></measure></part><sig><head-chord id="10" grade="0.63"></head-chord></sig></system></page></sheet>'],
+    ]));
+    const scoreXml = '<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><measure-style/></attributes></measure></part></score-partwise>';
     if (outputFormat === 'mxl') {
       await writeFile(path.join(outputDirectory, 'score.mxl'), createStoredZip([
         ['META-INF/container.xml', '<?xml version="1.0"?><container><rootfiles><rootfile full-path="score.xml"/></rootfiles></container>'],
-        ['score.xml', '<?xml version="1.0"?><score-partwise version="4.0"/>'],
+        ['score.xml', scoreXml],
       ]));
     } else {
-      await writeFile(path.join(outputDirectory, 'score.musicxml'), '<?xml version="1.0"?><score-partwise version="4.0"/>');
+      await writeFile(path.join(outputDirectory, 'score.musicxml'), scoreXml);
     }
     return { command, args, exitCode: 0, stdout: 'exported', stderr: engineLog, durationMs: 1 };
   }
@@ -145,6 +151,8 @@ test('creates a source-free, reproducible OMR artifact on success', async () => 
     assert.equal(job.engine.versionSource, 'engine-cli');
     assert.deepEqual(job.preflight.renderedPages, [{ page: 1, width: 2550, height: 3300 }]);
     assert.equal(job.artifacts.musicXml.length, 1);
+    assert.deepEqual(job.artifacts.musicXml[0].reviewSignals, [{ measureIndex: 0, minGrade: 0.63, lowNoteCount: 1 }]);
+    assert.equal((await readdir(job.jobDirectory, { recursive: true })).some((name) => name.endsWith('.omr')), false);
     assert.equal(job.artifacts.textLayerChordCandidates, 'text-layer/chord-candidates.json');
     const jobManifest = JSON.parse(await readFile(path.join(job.jobDirectory, 'job.json'), 'utf8'));
     assert.equal(jobManifest.input.sha256, job.input.sha256);

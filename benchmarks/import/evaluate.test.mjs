@@ -90,4 +90,14 @@ describe('import benchmark', () => {
     ]);
     expect(formatMarkdownReport(report)).toContain('N/A (0 warnings)');
   });
+
+  it('measures whether a localized OMR quality warning covers real melody errors', async () => {
+    const benchmark = await loadBenchmark(manifestPath);
+    const candidates = await loadCandidateSet(benchmark, 'audiveris-5.11.0-real-omr-v1');
+    const report = evaluateBenchmark(benchmark, candidates);
+    const automatic = report.scores.find((score) => score.scoreId === 'automatic');
+    expect(automatic.metrics.warnings.precision).toEqual({ matched: 1, total: 1, rate: 1 });
+    expect(automatic.metrics.warnings.melodyRecall).toEqual({ matched: 2, total: 2, rate: 1 });
+    expect(report.summary.warningRecall).toEqual({ matched: 2, total: 8, rate: 0.25 });
+  });
 });

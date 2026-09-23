@@ -12,7 +12,7 @@
 - Poppler: `pdfinfo`、`pdfimages`、`pdftotext`、`pdftoppm`
 - Audiverisを起動する`audiveris`コマンド。別のパスの場合は`--audiveris-bin`で指定します。
 
-Audiverisの公式CLIは`-batch -export -output <dir> -- <input>`でバッチ実行・MusicXML出力をサポートしています。[公式CLI説明](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)を参照してください。
+Audiverisの公式CLIは`-batch -export -save -output <dir> -- <input>`でMusicXMLと一時的なOMRプロジェクトを出力できます。[公式CLI説明](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)を参照してください。
 
 Dockerアダプターを使う場合は、上のPoppler一式はホスト側に必要で、Audiverisを含む信頼できるイメージとDockerが必要です。コンテナはネットワークなし、読み取り専用ルート、作業用`/tmp`だけを一時書き込み可能として起動します。イメージはこのリポジトリでは配布・自動取得しません。
 
@@ -48,10 +48,13 @@ npm run omr:pdf -- --input "sample/pdf/score.pdf" --engine docker --docker-image
 - ページ数、ページサイズ、暗号化有無、文字層・埋め込み画像の判定、レンダリングDPIとPNG寸法
 - 実行アダプター、Audiveris version（取得元を`engine.versionSource`に記録。macOSアプリは`Info.plist`、Dockerは固定image IDへフォールバック）、タイムアウト、実行したコマンドの結果
 - `musicxml/candidate-*.musicxml`と各SHA-256
+- 候補ごとの`reviewSignals`。Audiverisの一時`.omr`プロジェクトから、最初の論理パートで音符品質スコアが0.8未満だった小節を記録する
 - `logs/engine.log`
 - `text-layer/chord-candidates.json`
 
 `text-layer/chord-candidates.json`には、PDF文字層から得られたコードらしい文字列だけを、ページ番号とPDFポイント座標で保存します。全文や歌詞は保存しません。この位置情報は、次のレビュー段階でMusicXMLの小節候補と照合するための補助情報です。
+
+`reviewSignals`の値はAudiveris内部の`head-chord grade`であり、音符が正しい確率ではありません。最初の論理パートが主旋律として選択されたとき、低い小節は`low-omr-note-grade`警告として確認画面の「警告・低信頼度のみ」に表示します。警告はその小節の原譜照合を促し、音符を自動で除外・修正しません。高いスコアでも音高や休符の誤認識はあり得ます。`.omr`プロジェクトにはページ画像が含まれるため、スコアを抽出した後に一時領域ごと削除し、ジョブ成果物へは保存しません。候補との小節対応が取れない場合は`omr-note-quality-unavailable`を記録します。
 
 OMRが複数のMusicXMLを出した場合は、`job.json`の`artifacts.musicXml`に全候補を残し、`multiple-musicxml-candidates`警告を返します。Audiverisがメトロノーム記号をMusicXMLへ出力できない既知の警告をログに出した場合も、候補を捨てず、`diagnostics`に次の warning を追加します。これはテンポ表記を後続のレビューで確認するための契約であり、ImportDraftやレビューUIはログ全文を解析せずにこの値を表示・確認します。
 

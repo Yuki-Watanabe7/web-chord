@@ -22,6 +22,23 @@ const jobJson = async () => JSON.stringify({
 });
 
 describe('OMR job to ImportDraft', () => {
+  it('localizes a low Audiveris note grade to the selected melody measure', async () => {
+    const xml = `<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list>
+      <part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note></measure></part></score-partwise>`;
+    const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(xml)))]
+      .map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const raw = JSON.parse(await jobJson());
+    raw.artifacts.musicXml[0].sha256 = digest;
+    raw.artifacts.musicXml[0].reviewSignals = [{ measureIndex: 0, minGrade: 0.63, lowNoteCount: 1 }];
+    const draft = await parseOmrCandidateToImportDraft(parseOmrJobArtifact(JSON.stringify(raw)), {
+      name: 'candidate-1.musicxml', text: async () => xml,
+    });
+    expect(draft.issues.find((issue) => issue.code === 'low-omr-note-grade')).toMatchObject({
+      severity: 'warning', source: { measureIndex: 0, measureNumber: '1', partId: 'P1' },
+    });
+  });
+
   it('verifies candidate bytes and retains source identity and warnings', async () => {
     const job = parseOmrJobArtifact(await jobJson());
     const draft = await parseOmrCandidateToImportDraft(job, {
