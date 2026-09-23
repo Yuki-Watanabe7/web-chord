@@ -3,6 +3,7 @@ import styled from '@emotion/styled';
 import type { Song } from '../types/song';
 import { useNavigate } from 'react-router-dom';
 import { formatTimeSignature } from '../domain/music/timeline';
+import { parseMusicXmlFileToImportDraft } from '../domain/music/musicXmlImport';
 import { loadSongs, mergeAndSaveImportedSongs } from '../services/songStorage';
 import {
   createSongsBackupFileName,
@@ -115,6 +116,7 @@ function SongList() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [importStatus, setImportStatus] = useState<ImportStatusMessage | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const scoreInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -181,6 +183,27 @@ function SongList() {
     }
   };
 
+  const handleScoreImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const [file] = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (!file) return;
+
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (isPdf) {
+      navigate('/import/review', {
+        state: { pdf: { url: URL.createObjectURL(file), fileName: file.name, size: file.size } },
+      });
+      return;
+    }
+
+    try {
+      const draft = await parseMusicXmlFileToImportDraft(file);
+      navigate('/import/review', { state: { draft } });
+    } catch {
+      setImportStatus({ isError: true, message: 'MusicXMLを読み取れませんでした。ファイルを確認してもう一度選択してください。' });
+    }
+  };
+
   return (
     <Container>
       <Header>
@@ -192,12 +215,22 @@ function SongList() {
           <button type="button" onClick={() => importInputRef.current?.click()} aria-label="JSONを読み込む">
             JSONを読み込む
           </button>
+          <button type="button" onClick={() => scoreInputRef.current?.click()} aria-label="PDFまたはMusicXMLの楽譜をレビュー用に読み込む">
+            楽譜を読み込む
+          </button>
           <FileInput
             ref={importInputRef}
             type="file"
             accept=".json,.web-chord.json,application/json"
             aria-label="読み込むweb-chord JSONファイルを選択"
             onChange={handleImportFile}
+          />
+          <FileInput
+            ref={scoreInputRef}
+            type="file"
+            accept=".pdf,application/pdf,.musicxml,.xml,application/vnd.recordare.musicxml+xml,application/xml,text/xml"
+            aria-label="レビューするPDFまたはMusicXMLファイルを選択"
+            onChange={handleScoreImportFile}
           />
           <NewSongButton onClick={handleNewSong}>新規作成</NewSongButton>
         </HeaderActions>
