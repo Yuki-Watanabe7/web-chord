@@ -22,6 +22,7 @@ import { noteNameToChordPitch } from '../domain/music/chordSymbol';
 import { NOTE_NAMES } from '../domain/music/chords';
 import { parseMusicXmlFileToImportDraft } from '../domain/music/musicXmlImport';
 import { parseOmrCandidateToImportDraft, parseOmrJobArtifact } from '../domain/music/omrJobImport';
+import { combineOmrCandidateDrafts, planOmrCandidateMerge } from '../domain/music/omrJobMerge';
 import { createSongPlaybackSynths, playSong } from '../services/playback';
 import { saveSong } from '../services/songStorage';
 import type {
@@ -34,7 +35,7 @@ import type {
   ImportedTempo,
   ImportedTimeSignature,
 } from '../domain/music/importDraft';
-import type { ChordDegree, ChordKind, NoteName } from '../domain/music/types';
+import type { ChordDegree, ChordKind, NoteName, Song } from '../domain/music/types';
 import type { SongPlaybackSynths } from '../services/playback';
 import type { OmrJobArtifact } from '../domain/music/omrJobImport';
 
@@ -320,6 +321,10 @@ function ImportReview() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const jobInputRef = useRef<HTMLInputElement>(null);
   const [omrJob, setOmrJob] = useState<OmrJobArtifact | null>(null);
+  const [candidateDrafts, setCandidateDrafts] = useState<Record<string, ImportDraft>>({});
+  const [originalCandidateDrafts, setOriginalCandidateDrafts] = useState<Record<string, ImportDraft>>({});
+  const [activeCandidatePath, setActiveCandidatePath] = useState<string | null>(null);
+  const [coverageConfirmed, setCoverageConfirmed] = useState(false);
 
   useEffect(() => {
     const nextSynth = createSongPlaybackSynths();
@@ -340,6 +345,11 @@ function ImportReview() {
   const errors = validation?.issues.filter((issue) => issue.severity === 'error') ?? [];
   const measures = draft?.score.linearMeasures ?? [];
   const currentMeasure = measures[selectedMeasure];
+  const currentSourceSlot = omrJob?.artifacts.musicXml.find((candidate) => candidate.path === activeCandidatePath)
+    ?.sourceMeasures?.find((source) => source.measureIndex === currentMeasure?.sourceMeasureIndex);
+  const isMultiCandidateJob = Boolean(omrJob && omrJob.artifacts.musicXml.length > 1);
+  const mergePlan = useMemo(() => omrJob && omrJob.artifacts.musicXml.length > 1
+    ? planOmrCandidateMerge(omrJob, candidateDrafts) : null, [omrJob, candidateDrafts]);
 
   const candidateIsInCurrentMeasure = <T extends { startTick: number } | { tick: number }>(candidate: ImportCandidate<T>) => {
     if (!currentMeasure) return false;
@@ -370,26 +380,40 @@ function ImportReview() {
 
   const replaceDraft = (next: ImportDraft) => {
     setDraft(next);
+    if (activeCandidatePath) setCandidateDrafts((previous) => ({ ...previous, [activeCandidatePath]: next }));
     setActionMessage(null);
   };
 
   const handleMusicXmlFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const [file] = Array.from(event.target.files ?? []);
+    const files = Array.from(event.target.files ?? []);
     event.target.value = '';
-    if (!file) return;
+    if (files.length === 0) return;
 
     setIsParsing(true);
     setActionMessage(null);
     try {
-      const parsed = omrJob
-        ? await parseOmrCandidateToImportDraft(omrJob, file)
-        : await parseMusicXmlFileToImportDraft(file);
-      const copy = cloneDraft(parsed);
-      setDraft(copy);
-      setOriginalDraft(cloneDraft(parsed));
+      if (!omrJob && files.length !== 1) throw new Error('MusicXML単体の読み込みでは1ファイルを選択してください。');
+      const parsed = await Promise.all(files.map((file) => omrJob
+        ? parseOmrCandidateToImportDraft(omrJob, file)
+        : parseMusicXmlFileToImportDraft(file)));
+      const paths = files.map((file) => `musicxml/${file.name}`);
+      const copies = Object.fromEntries(parsed.map((item, index) => [paths[index], cloneDraft(item)]));
+      if (omrJob) {
+        setCandidateDrafts((previous) => ({ ...previous, ...copies }));
+        setOriginalCandidateDrafts((previous) => ({ ...previous, ...Object.fromEntries(parsed.map((item, index) => [paths[index], cloneDraft(item)])) }));
+        setActiveCandidatePath(paths[0]);
+        setPdfPage(omrJob.artifacts.musicXml.find((candidate) => candidate.path === paths[0])?.sourceMeasures?.[0]?.pdfPage ?? 1);
+        setCoverageConfirmed(false);
+      } else {
+        setActiveCandidatePath(null);
+      }
+      setDraft(copies[paths[0]]);
+      setOriginalDraft(cloneDraft(parsed[0]));
       setSelectedMeasure(0);
       setWarningOnly(false);
-      setActionMessage({ tone: 'success', text: `「${file.name}」をレビュー用の下書きとして読み込みました。Songにはまだ保存していません。` });
+      setActionMessage({ tone: 'success', text: files.length === 1
+        ? `「${files[0].name}」をレビュー用の下書きとして読み込みました。Songにはまだ保存していません。`
+        : `${files.length}件のMusicXMLをレビュー用に読み込みました。Songにはまだ保存していません。` });
     } catch (error) {
       setActionMessage({ tone: 'error', text: error instanceof Error ? error.message : 'MusicXMLを読み取れませんでした。' });
     } finally {
@@ -414,25 +438,54 @@ function ImportReview() {
       setOmrJob(job);
       setDraft(null);
       setOriginalDraft(null);
+      setCandidateDrafts({});
+      setOriginalCandidateDrafts({});
+      setActiveCandidatePath(null);
+      setCoverageConfirmed(false);
       setSelectedMeasure(0);
-      setActionMessage({ tone: 'success', text: `OMRジョブ「${job.jobId}」を読み込みました。候補MusicXMLを選択してください。` });
+      setActionMessage({ tone: 'success', text: `OMRジョブ「${job.jobId}」を読み込みました。${job.artifacts.musicXml.length > 1 ? '結合するすべての' : '候補'}MusicXMLを選択してください。` });
     } catch (error) {
       setOmrJob(null);
+      setDraft(null);
+      setOriginalDraft(null);
+      setCandidateDrafts({});
+      setOriginalCandidateDrafts({});
+      setActiveCandidatePath(null);
+      setCoverageConfirmed(false);
       setActionMessage({ tone: 'error', text: error instanceof Error ? error.message : 'job.jsonを読み取れませんでした。' });
     }
   };
 
-  const handlePreview = async () => {
-    if (!draft || !synth) return;
+  const songForReview = (): Song | null => {
+    if (!draft) return null;
+    if (omrJob && isMultiCandidateJob) {
+      if (!coverageConfirmed) {
+        setActionMessage({ tone: 'error', text: '候補のPDF上の順番と範囲を確認してから結合してください。' });
+        return null;
+      }
+      const merged = combineOmrCandidateDrafts(omrJob, candidateDrafts);
+      if (!merged.ok) {
+        setActionMessage({ tone: 'error', text: merged.plan.issues[0]?.message ?? '候補を結合できませんでした。' });
+        return null;
+      }
+      return merged.song;
+    }
     const result = confirmImportDraftToSong(draft);
     if (!result.ok) {
-      setActionMessage({ tone: 'error', text: '未解決のエラーがあるため、プレビューできません。エラーの対象を修正してください。' });
-      return;
+      setActionMessage({ tone: 'error', text: '未解決のエラーがあるため、Songへ確定できません。エラーの対象を修正してください。' });
+      return null;
     }
+    return result.song;
+  };
+
+  const handlePreview = async () => {
+    if (!draft || !synth) return;
+    const song = songForReview();
+    if (!song) return;
     setIsPlaying(true);
     setActionMessage({ tone: 'success', text: '下書きを一時的なSongに変換して再生しています。まだ保存していません。' });
     try {
-      await playSong(result.song, synth);
+      await playSong(song, synth);
     } finally {
       setIsPlaying(false);
     }
@@ -440,13 +493,10 @@ function ImportReview() {
 
   const handleConfirm = () => {
     if (!draft) return;
-    const result = confirmImportDraftToSong(draft);
-    if (!result.ok) {
-      setActionMessage({ tone: 'error', text: '未解決のエラーがあるため、Songへ確定できません。エラーの対象を修正してください。' });
-      return;
-    }
+    const song = songForReview();
+    if (!song) return;
     try {
-      const saved = saveSong(result.song);
+      const saved = saveSong(song);
       navigate(`/editor/${saved.id}`);
     } catch {
       setActionMessage({ tone: 'error', text: 'Songを端末へ保存できませんでした。ブラウザの空き容量やサイトデータの設定を確認してください。' });
@@ -457,13 +507,18 @@ function ImportReview() {
     if (!originalDraft) return;
     if (!window.confirm('このレビューで行った修正と確認済みマークをすべて戻します。よろしいですか？')) return;
     setDraft(cloneDraft(originalDraft));
+    if (activeCandidatePath) setCandidateDrafts((previous) => ({ ...previous, [activeCandidatePath]: cloneDraft(originalDraft) }));
     setSelectedMeasure(0);
     setWarningOnly(false);
     setActionMessage({ tone: 'success', text: '原認識値に戻しました。Songには保存していません。' });
   };
 
   const setMeasureByIndex = (index: number) => {
-    setSelectedMeasure(Math.max(0, Math.min(measures.length - 1, index)));
+    const next = Math.max(0, Math.min(measures.length - 1, index));
+    setSelectedMeasure(next);
+    const page = omrJob?.artifacts.musicXml.find((candidate) => candidate.path === activeCandidatePath)
+      ?.sourceMeasures?.find((source) => source.measureIndex === measures[next]?.sourceMeasureIndex)?.pdfPage;
+    if (page) setPdfPage(page);
   };
 
   return (
@@ -489,6 +544,7 @@ function ImportReview() {
           <FileInput
             ref={importInputRef}
             type="file"
+            multiple={isMultiCandidateJob}
             accept=".musicxml,.xml,application/vnd.recordare.musicxml+xml,application/xml,text/xml"
             aria-label="レビューするMusicXMLファイルを選択"
             onChange={handleMusicXmlFile}
@@ -505,12 +561,32 @@ function ImportReview() {
             <h1>OMRジョブの候補</h1>
             <p>{omrJob.input.fileName} / Audiveris {omrJob.engine.version} / 候補 {omrJob.artifacts.musicXml.length}件</p>
           </Heading>
-          <p>下の候補から確認するMusicXMLを選択してください。読み込み時にSHA-256を照合します。</p>
+          <p>{isMultiCandidateJob ? 'すべての候補MusicXMLを選択してください。複数ファイルをまとめて選べます。' : '下の候補から確認するMusicXMLを選択してください。'}読み込み時にSHA-256を照合します。</p>
           <ul>
             {omrJob.artifacts.musicXml.map((candidate) => (
-              <li key={candidate.path}>{candidate.path}（{candidate.sourceOutput}、SHA-256: {candidate.sha256}）</li>
+              <li key={candidate.path}>
+                {candidate.path}（{candidate.sourceOutput}、SHA-256: {candidate.sha256}）
+                {candidateDrafts[candidate.path] && <button type="button" onClick={() => {
+                  setActiveCandidatePath(candidate.path);
+                  setDraft(cloneDraft(candidateDrafts[candidate.path]));
+                  setOriginalDraft(cloneDraft(originalCandidateDrafts[candidate.path]));
+                  setSelectedMeasure(0);
+                  setWarningOnly(false);
+                  setPdfPage(candidate.sourceMeasures?.[0]?.pdfPage ?? 1);
+                }} disabled={activeCandidatePath === candidate.path}>この候補を確認</button>}
+                {' '}{candidateDrafts[candidate.path] ? `読み込み済み・演奏順${candidateDrafts[candidate.path].score.linearMeasures.length}小節` : '未読み込み'}
+              </li>
             ))}
           </ul>
+          {mergePlan && <Card>
+            <h2>候補を1曲に結合</h2>
+            <p>原PDF上の位置で並べ、重複・欠落がない場合に全候補を結合します。小節番号が候補ごとに1へ戻っても、PDF上の位置で判定します。</p>
+            {mergePlan.segments.length > 0 && <ol>{mergePlan.segments.map((segment) =>
+              <li key={segment.path}>{segment.path}: PDF {segment.first.pdfPage}ページ・譜面領域{segment.first.pageId}からPDF {segment.last.pdfPage}ページ・譜面領域{segment.last.pageId}（譜面{segment.sourceMeasureCount}小節、演奏順{segment.playbackMeasureCount}小節）</li>)}</ol>}
+            {mergePlan.issues.length > 0 && <IssueList>{mergePlan.issues.map((issue, index) =>
+              <IssueItem key={`${issue.code}:${index}`} $severity="error"><span>{issue.message}</span></IssueItem>)}</IssueList>}
+            {mergePlan.ready && <label><input type="checkbox" checked={coverageConfirmed} onChange={(event) => setCoverageConfirmed(event.target.checked)} /> 原PDFの順番と候補の範囲を確認した</label>}
+          </Card>}
           {omrJob.diagnostics.length > 0 && <IssueList>
             {omrJob.diagnostics.map((diagnostic) => <IssueItem key={diagnostic.code} $severity={diagnostic.severity}>
               <span><Badge $tone={diagnostic.severity === 'error' ? 'error' : 'warning'}>{diagnostic.code}</Badge> {diagnostic.message}</span>
@@ -528,7 +604,7 @@ function ImportReview() {
           {state.pdf ? (
             <>
               <Notice $tone="warning">「{state.pdf.fileName}」（{byteSize(state.pdf.size)}）はブラウザのメモリでプレビュー中です。原PDFは保存・送信しません。</Notice>
-              <p>PDFの認識はローカルの OMR コマンドで行います。元のファイルのあるターミナルで <Code>npm run omr:pdf -- --input "score.pdf"</Code> を実行し、先に <Code>job.json</Code>、次に <Code>candidate-*.musicxml</Code> を選択してください。ページ数・暗号化・サイズなどの完全な事前確認も、そのコマンドが実施します。</p>
+              <p>PDFの認識はローカルの OMR コマンドで行います。元のファイルのあるターミナルで <Code>npm run omr:pdf -- --input "score.pdf"</Code> を実行し、先に <Code>job.json</Code>、次に <Code>candidate-*.musicxml</Code> をすべて選択してください。ページ数・暗号化・サイズなどの完全な事前確認も、そのコマンドが実施します。</p>
             </>
           ) : (
             <Placeholder>PDFから始める場合は、一覧画面の「PDFを確認する」から原譜を選びます。ブラウザ内では重いOMR処理を行わず、ローカル処理で生成したMusicXMLだけをレビューします。</Placeholder>
@@ -573,6 +649,7 @@ function ImportReview() {
               )}
               <Metadata>
                 <dt>小節</dt><dd>譜面上 {currentMeasure.sourceMeasureNumber} / 演奏順 {selectedMeasure + 1} / {currentMeasure.occurrence}回目</dd>
+                {currentSourceSlot && <><dt>PDF位置</dt><dd>{currentSourceSlot.pdfPage}ページ・譜面領域{currentSourceSlot.pageId}・{currentSourceSlot.systemIndex + 1}段目・{currentSourceSlot.stackIndex + 1}小節目</dd></>}
                 <dt>時間</dt><dd>{currentMeasure.startTick}–{currentMeasure.startTick + currentMeasure.durationTicks} tick</dd>
                 <dt>構造</dt><dd>{(() => {
                   const source = draft.score.sourceMeasures.find((item) => item.partId === draft.score.parts[0]?.id && item.measureIndex === currentMeasure.sourceMeasureIndex);
@@ -596,7 +673,7 @@ function ImportReview() {
                     setWarningOnly(event.target.checked);
                     if (event.target.checked && !measureNeedsReview(currentMeasure, selectedMeasure)) {
                       const first = measures.findIndex((measure, index) => measureNeedsReview(measure, index));
-                      if (first >= 0) setSelectedMeasure(first);
+                      if (first >= 0) setMeasureByIndex(first);
                     }
                   }} /> 警告・低信頼度のみ</label>
                 </CandidateHeader>
@@ -670,8 +747,8 @@ function ImportReview() {
                 <p>プレビューは一時的な Song を再生するだけです。確定すると、この端末の保存済み楽曲へ追加して編集画面を開きます。</p>
               </div>
               <Actions>
-                <button type="button" disabled={!validation?.valid || isPlaying} onClick={() => void handlePreview()}>{isPlaying ? '再生中…' : 'Songとしてプレビュー'}</button>
-                <button type="button" disabled={!validation?.valid} onClick={handleConfirm}>Songへ確定して保存</button>
+                <button type="button" disabled={!validation?.valid || isPlaying || isMultiCandidateJob && (!mergePlan?.ready || !coverageConfirmed)} onClick={() => void handlePreview()}>{isPlaying ? '再生中…' : isMultiCandidateJob ? '結合したSongをプレビュー' : 'Songとしてプレビュー'}</button>
+                <button type="button" disabled={!validation?.valid || isMultiCandidateJob && (!mergePlan?.ready || !coverageConfirmed)} onClick={handleConfirm}>{isMultiCandidateJob ? '全候補を1曲として保存' : 'Songへ確定して保存'}</button>
               </Actions>
             </CandidateHeader>
             {!validation?.valid && <Notice $tone="error">未解決エラー {errors.length} 件があるため、プレビューと確定はできません。警告は確認済みにできますが、エラーは対象データを修正する必要があります。</Notice>}

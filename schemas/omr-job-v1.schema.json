@@ -96,6 +96,11 @@
       "properties": {
         "log": { "const": "logs/engine.log" },
         "textLayerChordCandidates": { "const": "text-layer/chord-candidates.json" },
+        "sourceLayout": {
+          "type": "array",
+          "description": "Every recognized source-score slot in PDF page and staff-system order, including slots not exported to a MusicXML candidate.",
+          "items": { "$ref": "#/$defs/sourceSlot" }
+        },
         "musicXml": {
           "type": "array",
           "items": {
@@ -105,6 +110,16 @@
               "path": { "type": "string", "pattern": "^musicxml/candidate-[0-9]+\\.musicxml$" },
               "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "sourceOutput": { "type": "string" },
+              "sourceMeasures": {
+                "type": "array",
+                "description": "First-part MusicXML source measures mapped to physical PDF score slots.",
+                "items": {
+                  "allOf": [
+                    { "$ref": "#/$defs/sourceSlot" },
+                    { "type": "object", "required": ["measureIndex"], "properties": { "measureIndex": { "type": "integer", "minimum": 0 } } }
+                  ]
+                }
+              },
               "reviewSignals": {
                 "type": "array",
                 "description": "Low Audiveris head-chord grades in the first logical part, indexed by source measure within this candidate.",
@@ -134,6 +149,18 @@
     "commands": { "type": "array", "items": { "type": "object" } }
   },
   "$defs": {
+    "sourceSlot": {
+      "type": "object",
+      "required": ["pdfPage", "pageId", "systemIndex", "stackIndex"],
+      "properties": {
+        "pdfPage": { "type": "integer", "minimum": 1 },
+        "pageId": { "type": "string", "minLength": 1 },
+        "systemIndex": { "type": "integer", "minimum": 0 },
+        "stackIndex": { "type": "integer", "minimum": 0 },
+        "measureIndex": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "diagnostic": {
       "type": "object",
       "required": ["severity", "code", "message"],

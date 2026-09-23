@@ -1,10 +1,18 @@
 import type { ImportDraft, ImportIssue } from './importDraft';
 import { parseMusicXmlToImportDraft } from './musicXmlImport';
 
+export interface OmrSourceSlot {
+  pdfPage: number;
+  pageId: string;
+  systemIndex: number;
+  stackIndex: number;
+}
+
 export interface OmrJobCandidate {
   path: string;
   sha256: string;
   sourceOutput: string;
+  sourceMeasures?: Array<OmrSourceSlot & { measureIndex: number }>;
   reviewSignals?: Array<{ measureIndex: number; minGrade: number; lowNoteCount: number }>;
 }
 
@@ -13,8 +21,9 @@ export interface OmrJobArtifact {
   jobId: string;
   status: 'succeeded';
   input: { fileName: string; sha256: string };
+  preflight?: { pages: number };
   engine: { version: string };
-  artifacts: { musicXml: OmrJobCandidate[] };
+  artifacts: { musicXml: OmrJobCandidate[]; sourceLayout?: OmrSourceSlot[] };
   diagnostics: Array<{
     severity: 'warning' | 'error';
     code: string;
@@ -26,6 +35,11 @@ export interface OmrJobArtifact {
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const isSourceSlot = (value: unknown): value is OmrSourceSlot => isRecord(value) &&
+  Number.isInteger(value.pdfPage) && Number(value.pdfPage) > 0 &&
+  typeof value.pageId === 'string' && value.pageId.length > 0 &&
+  Number.isInteger(value.systemIndex) && Number(value.systemIndex) >= 0 &&
+  Number.isInteger(value.stackIndex) && Number(value.stackIndex) >= 0;
 
 /** Parses the source-free job contract before any candidate is trusted. */
 export const parseOmrJobArtifact = (json: string): OmrJobArtifact => {
@@ -34,6 +48,8 @@ export const parseOmrJobArtifact = (json: string): OmrJobArtifact => {
     typeof value.jobId !== 'string' || !/^omr-[a-f0-9]{20}$/.test(value.jobId) ||
     !isRecord(value.input) || typeof value.input.fileName !== 'string' ||
     typeof value.input.sha256 !== 'string' || !sha256Pattern.test(value.input.sha256) ||
+    (value.preflight !== undefined && (!isRecord(value.preflight) ||
+      !Number.isInteger(value.preflight.pages) || Number(value.preflight.pages) < 1)) ||
     !isRecord(value.engine) || typeof value.engine.version !== 'string' ||
     !isRecord(value.artifacts) || !Array.isArray(value.artifacts.musicXml) ||
     value.artifacts.musicXml.length === 0 || !Array.isArray(value.diagnostics)) {
@@ -44,11 +60,16 @@ export const parseOmrJobArtifact = (json: string): OmrJobArtifact => {
     typeof candidate.path === 'string' && /^musicxml\/candidate-[1-9][0-9]*\.musicxml$/.test(candidate.path) &&
     typeof candidate.sha256 === 'string' && sha256Pattern.test(candidate.sha256) &&
     typeof candidate.sourceOutput === 'string' &&
+    (candidate.sourceMeasures === undefined || Array.isArray(candidate.sourceMeasures) &&
+      candidate.sourceMeasures.every((source: unknown) => isSourceSlot(source) && isRecord(source) &&
+        Number.isInteger(source.measureIndex) && Number(source.measureIndex) >= 0)) &&
     (candidate.reviewSignals === undefined || Array.isArray(candidate.reviewSignals) &&
       candidate.reviewSignals.every((signal: unknown) => isRecord(signal) &&
         Number.isInteger(signal.measureIndex) && Number(signal.measureIndex) >= 0 &&
         typeof signal.minGrade === 'number' && signal.minGrade >= 0 && signal.minGrade <= 1 &&
         Number.isInteger(signal.lowNoteCount) && Number(signal.lowNoteCount) > 0))) ||
+    (value.artifacts.sourceLayout !== undefined && (!Array.isArray(value.artifacts.sourceLayout) ||
+      !value.artifacts.sourceLayout.every(isSourceSlot))) ||
     !value.diagnostics.every((diagnostic) => isRecord(diagnostic) &&
       ['warning', 'error'].includes(String(diagnostic.severity)) &&
       typeof diagnostic.code === 'string' && typeof diagnostic.message === 'string')) {

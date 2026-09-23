@@ -49,6 +49,7 @@ npm run omr:pdf -- --input "sample/pdf/score.pdf" --engine docker --docker-image
 - 実行アダプター、Audiveris version（取得元を`engine.versionSource`に記録。macOSアプリは`Info.plist`、Dockerは固定image IDへフォールバック）、タイムアウト、実行したコマンドの結果
 - `musicxml/candidate-*.musicxml`と各SHA-256
 - 候補ごとの`reviewSignals`。Audiverisの一時`.omr`プロジェクトから、最初の論理パートで音符品質スコアが0.8未満だった小節を記録する
+- `sourceLayout`と候補ごとの`sourceMeasures`。PDFページ、同一ページ内の譜面領域、段、小節位置を数値だけで記録し、複数候補の順番・重複・欠落を照合する
 - `logs/engine.log`
 - `text-layer/chord-candidates.json`
 
@@ -56,7 +57,9 @@ npm run omr:pdf -- --input "sample/pdf/score.pdf" --engine docker --docker-image
 
 `reviewSignals`の値はAudiveris内部の`head-chord grade`であり、音符が正しい確率ではありません。最初の論理パートが主旋律として選択されたとき、低い小節は`low-omr-note-grade`警告として確認画面の「警告・低信頼度のみ」に表示します。警告はその小節の原譜照合を促し、音符を自動で除外・修正しません。高いスコアでも音高や休符の誤認識はあり得ます。`.omr`プロジェクトにはページ画像が含まれるため、スコアを抽出した後に一時領域ごと削除し、ジョブ成果物へは保存しません。候補との小節対応が取れない場合は`omr-note-quality-unavailable`を記録します。
 
-OMRが複数のMusicXMLを出した場合は、`job.json`の`artifacts.musicXml`に全候補を残し、`multiple-musicxml-candidates`警告を返します。Audiverisがメトロノーム記号をMusicXMLへ出力できない既知の警告をログに出した場合も、候補を捨てず、`diagnostics`に次の warning を追加します。これはテンポ表記を後続のレビューで確認するための契約であり、ImportDraftやレビューUIはログ全文を解析せずにこの値を表示・確認します。
+OMRが複数のMusicXMLを出した場合は、`job.json`の`artifacts.musicXml`に全候補を残し、`multiple-musicxml-candidates`警告を返します。確認画面では全候補のMusicXMLを読み込み、候補ごとに旋律・コード・変更を修正します。PDF上の位置を照合して重複・欠落がなければ、譜面順で各候補の反復展開済み小節とイベントを1つのSongへ結合できます。調・拍子・テンポの明示的な変更も結合後のtickへ移します。原PDF上の順番を確認するまでは保存できません。候補が足りない、位置が重複・欠落する、反復が候補の境界をまたぐなど結合が曖昧な場合は、該当するPDFページと譜面位置を示し、結合を止めます。位置情報のない古いジョブは再処理が必要です。
+
+Audiverisがメトロノーム記号をMusicXMLへ出力できない既知の警告をログに出した場合も、候補を捨てず、`diagnostics`に次の warning を追加します。これはテンポ表記を後続のレビューで確認するための契約であり、ImportDraftやレビューUIはログ全文を解析せずにこの値を表示・確認します。
 
 ```json
 {
@@ -72,7 +75,7 @@ OMRが複数のMusicXMLを出した場合は、`job.json`の`artifacts.musicXml`
 
 `details.count`は検出件数、`details.locations`は各警告でログから取得できた`page`／`sheet`番号です。番号をログから取得できない場合、対応する location は空のオブジェクトになります。未知のAudiverisログ形式はこの warning に変換せず、従来どおり`logs/engine.log`へ保存します。OMR失敗時も`job.json`とログを残して`status: "failed"`と機械可読な理由を返します。無言で停止することはありません。
 
-確認画面で原PDFを選んだ後、成果物の `job.json`、続いて `musicxml/candidate-*.musicxml` を選択します。画面は原PDFとjobに記録されたPDFのSHA-256、さらにMusicXMLと候補のSHA-256を照合し、候補一覧・OMR診断を表示します。OMR警告は `ImportDraft` の確認事項として保持され、Song確定前に確認できます。MusicXMLだけを直接選んだ場合はjob診断とPDF出典を紐付けられません。
+確認画面で原PDFを選んだ後、成果物の `job.json`、続いてすべての `musicxml/candidate-*.musicxml` を選択します。複数ファイルをまとめて選べます。画面は原PDFとjobに記録されたPDFのSHA-256、さらに各MusicXMLと候補のSHA-256を照合し、候補一覧・OMR診断を表示します。候補を切り替えて各小節を確認し、結合順と範囲を確認してから1曲として確定します。OMR警告は `ImportDraft` の確認事項として保持され、Song確定前に確認できます。MusicXMLだけを直接選んだ場合はjob診断とPDF出典を紐付けられません。
 
 ## 入力安全性と保持方針
 

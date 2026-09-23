@@ -2,6 +2,8 @@
 
 この記録はPR #56時点の受入結果を保存する。Issue #53で音符品質警告を追加して再処理した結果と現在の実OMR候補セットについては、[音符品質の再測定](omr-note-quality-qualification.md)を参照する。
 
+Issue #54の再調査では、Automaticの候補2がPDF 1ページ目の2つ目の譜面領域から始まることを確認した。この文書内の「後続ページ」は初回受入時の認識であり、正しい範囲と結合結果は[分割候補の結合検証](omr-split-merge-qualification.md)を参照する。
+
 ## 判定範囲
 
 manifest の SHA-256 に一致する原PDFをローカルで処理し、Audiveris 5.11.0 の実出力を `ImportDraft` に変換した。代表区間の採点と全候補の `Song` 変換を確認した。原PDF、レンダリング画像、全曲MusicXML、全曲SongはGitに含めない。`regression-probe-v1` は合成回帰データであり、以下の実測値には使っていない。
