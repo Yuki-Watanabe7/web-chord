@@ -20,7 +20,7 @@ benchmarks/import/
 
 `regression-probe-v1`は実在するOMR変換器の精度を示すものではありません。「世界がひとつになるまで」1小節目を原譜と一致させ、他の区間には誤った音符、tick、調、タイなどを意図的に残しています。評価処理が項目別・小節別に誤りを出せることを固定するテスト入力です。
 
-`audiveris-5.11.0-real-omr-v1`は、3つのSHA-256確認済み原PDFを実際にAudiverisで処理した代表区間です。初回受入は[`real-omr-qualification.md`](real-omr-qualification.md)、音符品質警告を加えた再測定は[`omr-note-quality-qualification.md`](omr-note-quality-qualification.md)、Automaticの分割候補の結合検証とその時点の候補hashは[`omr-split-merge-qualification.md`](omr-split-merge-qualification.md)を参照してください。全曲MusicXMLや原PDFは含みません。
+`audiveris-5.11.0-real-omr-v1`は、3つのSHA-256確認済み原PDFを実際にAudiverisで処理した代表区間です。初回受入は[`real-omr-qualification.md`](real-omr-qualification.md)、音符品質警告を加えた再測定は[`omr-note-quality-qualification.md`](omr-note-quality-qualification.md)、Automaticの分割候補の結合検証とその時点の候補hashは[`omr-split-merge-qualification.md`](omr-split-merge-qualification.md)、D.S.／Codaと全曲演奏順は[`omr-navigation-qualification.md`](omr-navigation-qualification.md)を参照してください。全曲MusicXMLや原PDFは含みません。
 
 ### Issue #49: 1小節目の照合と候補修正
 
@@ -79,6 +79,14 @@ npm run benchmark:import -- --candidate <candidate-set-id>
 ```sh
 npm run benchmark:import -- --candidate audiveris-5.11.0-real-omr-v1
 ```
+
+原PDFから手で転記した全曲の演奏順と、実OMR候補の固定スナップショットとの比較:
+
+```sh
+npm run benchmark:omr-navigation
+```
+
+この比較はカリスマックスとAutomaticの反復・D.S.・Codaを含む小節列全体を対象にします。`full-playback-order.json`には譜面小節番号の順序のみを保存し、全曲の音符・MusicXML・PDFは保存しません。
 
 レポートには次が含まれます。
 

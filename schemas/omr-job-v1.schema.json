@@ -101,6 +101,21 @@
           "description": "Every recognized source-score slot in PDF page and staff-system order, including slots not exported to a MusicXML candidate.",
           "items": { "$ref": "#/$defs/sourceSlot" }
         },
+        "navigationHints": {
+          "type": "array",
+          "description": "Manually verified source-score navigation positions for exact PDF hashes; review hints, not automatic OMR detections.",
+          "items": {
+            "type": "object",
+            "required": ["kind", "sourceMeasureIndex", "evidence"],
+            "properties": {
+              "kind": { "enum": ["segno", "dalSegno", "toCoda", "coda"] },
+              "sourceMeasureIndex": { "type": "integer", "minimum": 0 },
+              "targetMeasureIndex": { "type": "integer", "minimum": 0 },
+              "evidence": { "const": "manual-pdf-review" }
+            },
+            "additionalProperties": false
+          }
+        },
         "musicXml": {
           "type": "array",
           "items": {
