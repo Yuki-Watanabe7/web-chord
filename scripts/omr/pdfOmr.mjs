@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { inflateRawSync } from 'node:zlib';
 import { extractOmrScoreMetadata } from './qualitySignals.mjs';
+import { navigationReferenceHints } from './navigationReferences.mjs';
 
 export const OMR_JOB_CONTRACT_VERSION = 1;
 export const OMR_JOB_CONTRACT_SCHEMA = 'schemas/omr-job-v1.schema.json';
@@ -651,6 +652,7 @@ export const runPdfOmrJob = async (options) => {
     artifacts = {
       musicXml: musicXmlArtifacts,
       ...(sourceLayout ? { sourceLayout } : {}),
+      ...(sourceLayout ? { navigationHints: navigationReferenceHints(input.sha256, sourceLayout) } : {}),
       textLayerChordCandidates: relativeFile(stageDirectory, textLayerPath),
     };
     await writeArtifact(stageDirectory, 'logs/engine.log', `${commandLogs.join('\n')}\n`);

@@ -1,0 +1,28 @@
+{
+  "description": "Manually transcribed physical source-measure playback routes from the SHA-256-pinned local PDFs. Ranges use 1-based PDF score order, not MusicXML measure numbers.",
+  "scores": [
+    {
+      "id": "charismax",
+      "pdfSha256": "768c67d7be7c2f44607e571d019af14017df999383963e2d28ceee338876bfd5",
+      "candidateSha256": ["c47bc9ce728457b378a00689f261e7f8993284cbb406e593ddb8d1d0357b6091"],
+      "sourceMeasureCount": 86,
+      "candidateOrder": "1-45, 13-35, 37-44, 46-86",
+      "navigationProposal": "1-45, 13-35, 37-44, 46-69, 29-35, 70-86",
+      "groundTruthOrder": "1-45, 13-35, 37-44, 46-69, 29-35, 70-86",
+      "scoreEvidence": "PDF 2 page: Segno at source 29 and To Coda at 35; PDF 4 page: D.S. at 69 and Coda at 70. Source 13-45 repeat with first/second ending is transcribed in score order."
+    },
+    {
+      "id": "automatic",
+      "pdfSha256": "b927162911cfd804178baffac255d290251a8dc7b4c8e2a078c2184f5d2b052c",
+      "candidateSha256": [
+        "2b3e015993604fcab585cab234f08a2dc5b037637264deb366bd658bee2e5136",
+        "d5a380e23a4e8831a50d8e4b4d7e1f5186db02682131c10a59e0b9c06e677523"
+      ],
+      "sourceMeasureCount": 72,
+      "candidateOrder": "1-18, 11-36, 29-33, 35, 37-72",
+      "navigationProposal": "1-18, 11-36, 29-33, 35, 37-39, 5-18, 11-36, 29-33, 35, 37-72",
+      "groundTruthOrder": "1-18, 11-18, 19-36, 29-33, 37-39, 5-36, 29-33, 37-72",
+      "scoreEvidence": "PDF 1 page: Segno at source 5 and A section marked D.S. time straight. PDF 2 page: later repeat marked D.S. time repeat. PDF 3 page: 1.3/2.4 endings, D.S. and To Coda at source 39, Coda at 40. On the D.S. return the A repeat is played straight, while the later repeat is played again."
+    }
+  ]
+}

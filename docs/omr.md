@@ -50,6 +50,7 @@ npm run omr:pdf -- --input "sample/pdf/score.pdf" --engine docker --docker-image
 - `musicxml/candidate-*.musicxml`と各SHA-256
 - 候補ごとの`reviewSignals`。Audiverisの一時`.omr`プロジェクトから、最初の論理パートで音符品質スコアが0.8未満だった小節を記録する
 - `sourceLayout`と候補ごとの`sourceMeasures`。PDFページ、同一ページ内の譜面領域、段、小節位置を数値だけで記録し、複数候補の順番・重複・欠落を照合する
+- `navigationHints`（該当する場合）。SHA-256と小節配置が一致する手動照合済み原PDFについて、Segno・D.S.・To Coda・Codaの譜面位置と飛び先を参考情報として記録する
 - `logs/engine.log`
 - `text-layer/chord-candidates.json`
 
@@ -58,6 +59,8 @@ npm run omr:pdf -- --input "sample/pdf/score.pdf" --engine docker --docker-image
 `reviewSignals`の値はAudiveris内部の`head-chord grade`であり、音符が正しい確率ではありません。最初の論理パートが主旋律として選択されたとき、低い小節は`low-omr-note-grade`警告として確認画面の「警告・低信頼度のみ」に表示します。警告はその小節の原譜照合を促し、音符を自動で除外・修正しません。高いスコアでも音高や休符の誤認識はあり得ます。`.omr`プロジェクトにはページ画像が含まれるため、スコアを抽出した後に一時領域ごと削除し、ジョブ成果物へは保存しません。候補との小節対応が取れない場合は`omr-note-quality-unavailable`を記録します。
 
 OMRが複数のMusicXMLを出した場合は、`job.json`の`artifacts.musicXml`に全候補を残し、`multiple-musicxml-candidates`警告を返します。確認画面では全候補のMusicXMLを読み込み、候補ごとに旋律・コード・変更を修正します。PDF上の位置を照合して重複・欠落がなければ、譜面順で各候補の反復展開済み小節とイベントを1つのSongへ結合できます。調・拍子・テンポの明示的な変更も結合後のtickへ移します。原PDF上の順番を確認するまでは保存できません。候補が足りない、位置が重複・欠落する、反復が候補の境界をまたぐなど結合が曖昧な場合は、該当するPDFページと譜面位置を示し、結合を止めます。位置情報のない古いジョブは再処理が必要です。
+
+進行記号の参考位置があるジョブでは、確認画面がMusicXMLで欠けた記号のPDFページ・譜面小節と候補を示します。記号と飛び先は編集でき、D.S.からSegnoへ戻ってTo CodaからCodaへ進む演奏順を提案します。PDF上の小節を左上から数えた通し番号で全曲順を直接直すこともできます。確認した順に音符・コード・調・拍子・テンポのイベントを配置し直します。原PDFの進行と全曲順を確認するまでは保存できません。参考位置は固定された2原PDFの手動照合結果であり、未知のPDFについてD.S.／Codaを自動検出した意味ではありません。未知のPDFでも記号と飛び先を手で追加できます。実測と適用範囲は[全曲演奏順の受入記録](../benchmarks/import/omr-navigation-qualification.md)を参照してください。
 
 Audiverisがメトロノーム記号をMusicXMLへ出力できない既知の警告をログに出した場合も、候補を捨てず、`diagnostics`に次の warning を追加します。これはテンポ表記を後続のレビューで確認するための契約であり、ImportDraftやレビューUIはログ全文を解析せずにこの値を表示・確認します。
 

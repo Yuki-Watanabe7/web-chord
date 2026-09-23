@@ -23,6 +23,7 @@ import { NOTE_NAMES } from '../domain/music/chords';
 import { parseMusicXmlFileToImportDraft } from '../domain/music/musicXmlImport';
 import { parseOmrCandidateToImportDraft, parseOmrJobArtifact } from '../domain/music/omrJobImport';
 import { combineOmrCandidateDrafts, planOmrCandidateMerge } from '../domain/music/omrJobMerge';
+import { confirmOmrNavigationToSong, formatOmrSourceOrder, parseOmrSourceOrder, planOmrNavigation } from '../domain/music/omrNavigation';
 import { createSongPlaybackSynths, playSong } from '../services/playback';
 import { saveSong } from '../services/songStorage';
 import type {
@@ -37,7 +38,7 @@ import type {
 } from '../domain/music/importDraft';
 import type { ChordDegree, ChordKind, NoteName, Song } from '../domain/music/types';
 import type { SongPlaybackSynths } from '../services/playback';
-import type { OmrJobArtifact } from '../domain/music/omrJobImport';
+import type { OmrJobArtifact, OmrNavigationMark, OmrSourceSlot } from '../domain/music/omrJobImport';
 
 const Page = styled.div`
   max-width: 1440px;
@@ -303,6 +304,11 @@ const parseDegreesText = (value: string): ChordDegree[] | null => {
 const isLowConfidence = (candidate: ImportCandidate<unknown>) =>
   candidate.confidence !== undefined && candidate.confidence < 0.8;
 const byteSize = (value: number) => `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+const navigationKindLabel: Record<OmrNavigationMark['kind'], string> = {
+  segno: 'Segno（戻り先）', dalSegno: 'D.S.（戻る）', toCoda: 'To Coda（飛ぶ）', coda: 'Coda（飛び先）',
+};
+const omrSlotKey = ({ pdfPage, pageId, systemIndex, stackIndex }: OmrSourceSlot) =>
+  `${pdfPage}:${pageId}:${systemIndex}:${stackIndex}`;
 
 function ImportReview() {
   const location = useLocation();
@@ -325,6 +331,10 @@ function ImportReview() {
   const [originalCandidateDrafts, setOriginalCandidateDrafts] = useState<Record<string, ImportDraft>>({});
   const [activeCandidatePath, setActiveCandidatePath] = useState<string | null>(null);
   const [coverageConfirmed, setCoverageConfirmed] = useState(false);
+  const [navigationMarks, setNavigationMarks] = useState<OmrNavigationMark[]>([]);
+  const [navigationOrderOverride, setNavigationOrderOverride] = useState<string | null>(null);
+  const [navigationConfirmed, setNavigationConfirmed] = useState(false);
+  const [newNavigationKind, setNewNavigationKind] = useState<OmrNavigationMark['kind']>('dalSegno');
 
   useEffect(() => {
     const nextSynth = createSongPlaybackSynths();
@@ -347,9 +357,55 @@ function ImportReview() {
   const currentMeasure = measures[selectedMeasure];
   const currentSourceSlot = omrJob?.artifacts.musicXml.find((candidate) => candidate.path === activeCandidatePath)
     ?.sourceMeasures?.find((source) => source.measureIndex === currentMeasure?.sourceMeasureIndex);
+  const currentGlobalSourceIndex = currentSourceSlot && omrJob?.artifacts.sourceLayout?.findIndex((slot) =>
+    omrSlotKey(slot) === omrSlotKey(currentSourceSlot));
+  const currentNavigationMarks = navigationMarks.filter((mark) => mark.sourceMeasureIndex === currentGlobalSourceIndex);
   const isMultiCandidateJob = Boolean(omrJob && omrJob.artifacts.musicXml.length > 1);
   const mergePlan = useMemo(() => omrJob && omrJob.artifacts.musicXml.length > 1
     ? planOmrCandidateMerge(omrJob, candidateDrafts) : null, [omrJob, candidateDrafts]);
+  const navigationPlan = useMemo(() => omrJob?.artifacts.sourceLayout &&
+    omrJob.artifacts.musicXml.every((candidate) => candidateDrafts[candidate.path])
+    ? planOmrNavigation(omrJob, candidateDrafts, navigationMarks) : null,
+  [omrJob, candidateDrafts, navigationMarks]);
+  const navigationRequired = Boolean(omrJob && (
+    (omrJob.artifacts.navigationHints?.length ?? 0) > 0 || navigationMarks.length > 0 || navigationOrderOverride !== null));
+  const navigationOrderText = navigationOrderOverride ?? formatOmrSourceOrder(navigationPlan?.proposedOrder ?? []);
+  const navigationOrder = useMemo(() => {
+    if (!navigationPlan?.baselineOrder.length || !omrJob?.artifacts.sourceLayout ||
+      !navigationPlan.ready && navigationOrderOverride === null) return { order: null, error: null };
+    try {
+      return { order: parseOmrSourceOrder(navigationOrderText, omrJob.artifacts.sourceLayout.length), error: null };
+    } catch (error) {
+      return { order: null, error: error instanceof Error ? error.message : '演奏順を読み取れませんでした。' };
+    }
+  }, [navigationPlan, navigationOrderText, navigationOrderOverride, omrJob]);
+  const navigationReady = !navigationRequired || Boolean(navigationPlan?.baselineOrder.length &&
+    (navigationPlan.ready || navigationOrderOverride !== null) && navigationOrder.order && navigationConfirmed);
+  const navigationSource = (sourceIndex: number) => {
+    const slot = omrJob?.artifacts.sourceLayout?.[sourceIndex];
+    if (!slot) return null;
+    for (const candidate of omrJob!.artifacts.musicXml) {
+      const local = candidate.sourceMeasures?.find((source) => omrSlotKey(source) === omrSlotKey(slot));
+      if (local) return { slot, candidate, localIndex: local.measureIndex, draft: candidateDrafts[candidate.path] };
+    }
+    return null;
+  };
+  const showNavigationSource = (sourceIndex: number) => {
+    const source = navigationSource(sourceIndex);
+    if (!source?.draft) return;
+    setActiveCandidatePath(source.candidate.path);
+    setDraft(cloneDraft(source.draft));
+    setOriginalDraft(cloneDraft(originalCandidateDrafts[source.candidate.path]));
+    setSelectedMeasure(Math.max(0, source.draft.score.linearMeasures.findIndex((measure) =>
+      measure.sourceMeasureIndex === source.localIndex)));
+    setPdfPage(source.slot.pdfPage);
+    setWarningOnly(false);
+  };
+  const updateNavigationMark = (index: number, mark: OmrNavigationMark) => {
+    setNavigationMarks((previous) => previous.map((item, position) => position === index ? mark : item));
+    setNavigationOrderOverride(null);
+    setNavigationConfirmed(false);
+  };
 
   const candidateIsInCurrentMeasure = <T extends { startTick: number } | { tick: number }>(candidate: ImportCandidate<T>) => {
     if (!currentMeasure) return false;
@@ -381,6 +437,7 @@ function ImportReview() {
   const replaceDraft = (next: ImportDraft) => {
     setDraft(next);
     if (activeCandidatePath) setCandidateDrafts((previous) => ({ ...previous, [activeCandidatePath]: next }));
+    setNavigationConfirmed(false);
     setActionMessage(null);
   };
 
@@ -404,6 +461,8 @@ function ImportReview() {
         setActiveCandidatePath(paths[0]);
         setPdfPage(omrJob.artifacts.musicXml.find((candidate) => candidate.path === paths[0])?.sourceMeasures?.[0]?.pdfPage ?? 1);
         setCoverageConfirmed(false);
+        setNavigationConfirmed(false);
+        setNavigationOrderOverride(null);
       } else {
         setActiveCandidatePath(null);
       }
@@ -442,6 +501,9 @@ function ImportReview() {
       setOriginalCandidateDrafts({});
       setActiveCandidatePath(null);
       setCoverageConfirmed(false);
+      setNavigationMarks(job.artifacts.navigationHints?.map((hint) => ({ ...hint })) ?? []);
+      setNavigationOrderOverride(null);
+      setNavigationConfirmed(false);
       setSelectedMeasure(0);
       setActionMessage({ tone: 'success', text: `OMRジョブ「${job.jobId}」を読み込みました。${job.artifacts.musicXml.length > 1 ? '結合するすべての' : '候補'}MusicXMLを選択してください。` });
     } catch (error) {
@@ -452,12 +514,31 @@ function ImportReview() {
       setOriginalCandidateDrafts({});
       setActiveCandidatePath(null);
       setCoverageConfirmed(false);
+      setNavigationMarks([]);
+      setNavigationOrderOverride(null);
+      setNavigationConfirmed(false);
       setActionMessage({ tone: 'error', text: error instanceof Error ? error.message : 'job.jsonを読み取れませんでした。' });
     }
   };
 
   const songForReview = (): Song | null => {
     if (!draft) return null;
+    if (omrJob && navigationRequired) {
+      if (isMultiCandidateJob && !coverageConfirmed) {
+        setActionMessage({ tone: 'error', text: '候補のPDF上の順番と範囲を確認してから結合してください。' });
+        return null;
+      }
+      if (!navigationReady || !navigationOrder.order) {
+        setActionMessage({ tone: 'error', text: navigationOrder.error ?? navigationPlan?.issues[0]?.message ?? '原PDFの進行記号と演奏順を確認してください。' });
+        return null;
+      }
+      const result = confirmOmrNavigationToSong(omrJob, candidateDrafts, navigationOrder.order);
+      if (!result.ok) {
+        setActionMessage({ tone: 'error', text: result.issues[0]?.message ?? '確認した演奏順でSongを作れませんでした。' });
+        return null;
+      }
+      return result.song;
+    }
     if (omrJob && isMultiCandidateJob) {
       if (!coverageConfirmed) {
         setActionMessage({ tone: 'error', text: '候補のPDF上の順番と範囲を確認してから結合してください。' });
@@ -510,6 +591,7 @@ function ImportReview() {
     if (activeCandidatePath) setCandidateDrafts((previous) => ({ ...previous, [activeCandidatePath]: cloneDraft(originalDraft) }));
     setSelectedMeasure(0);
     setWarningOnly(false);
+    setNavigationConfirmed(false);
     setActionMessage({ tone: 'success', text: '原認識値に戻しました。Songには保存していません。' });
   };
 
@@ -595,6 +677,96 @@ function ImportReview() {
         </Panel>
       )}
 
+      {omrJob?.artifacts.sourceLayout && draft && (
+        <Panel>
+          <Card>
+            <h2>進行記号と全曲の演奏順</h2>
+            <p>PDFの譜面小節を左上から順に数えて表示します。MusicXMLの小節番号とは異なります。D.S.とTo Codaの位置・飛び先を原PDFで確認してください。</p>
+            {(omrJob.artifacts.navigationHints?.length ?? 0) > 0 &&
+              <Notice $tone="warning">このPDFのSHA-256と一致する原譜を手で確認した参考位置です。MusicXMLに記号が欠けている可能性があります。ページと小節を開いて確認してください。</Notice>}
+            {navigationMarks.map((mark, index) => {
+              const source = navigationSource(mark.sourceMeasureIndex);
+              const sourceMeasure = source?.draft?.score.sourceMeasures.find((measure) =>
+                measure.partId === source.draft?.score.parts[0]?.id && measure.measureIndex === source.localIndex);
+              const recognized = sourceMeasure && (mark.kind === 'segno' ? sourceMeasure.directions.segno :
+                mark.kind === 'coda' ? sourceMeasure.directions.coda :
+                  mark.kind === 'dalSegno' ? sourceMeasure.directions.dalsegno : sourceMeasure.directions.tocoda);
+              return <Card key={`${mark.kind}:${index}`}>
+                <FieldGrid>
+                  <Field>記号
+                    <select value={mark.kind} onChange={(event) => {
+                      const kind = event.target.value as OmrNavigationMark['kind'];
+                      updateNavigationMark(index, { ...mark, kind,
+                        targetMeasureIndex: kind === 'dalSegno' || kind === 'toCoda' ? mark.targetMeasureIndex ?? 0 : undefined });
+                    }}>
+                      {Object.entries(navigationKindLabel).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
+                    </select>
+                  </Field>
+                  <Field>記号がある譜面小節
+                    <input type="number" min="1" max={omrJob.artifacts.sourceLayout?.length} value={mark.sourceMeasureIndex + 1}
+                      onChange={(event) => updateNavigationMark(index, { ...mark, sourceMeasureIndex: Number(event.target.value) - 1 })} />
+                  </Field>
+                  {(mark.kind === 'dalSegno' || mark.kind === 'toCoda') && <Field>ジャンプ先の譜面小節
+                    <input type="number" min="1" max={omrJob.artifacts.sourceLayout?.length} value={(mark.targetMeasureIndex ?? -1) + 1}
+                      onChange={(event) => updateNavigationMark(index, { ...mark, targetMeasureIndex: Number(event.target.value) - 1 })} />
+                  </Field>}
+                </FieldGrid>
+                <CandidateHeader>
+                  <span>{source ? `PDF ${source.slot.pdfPage}ページ・譜面領域${source.slot.pageId}・${source.slot.systemIndex + 1}段目・${source.slot.stackIndex + 1}小節目 / ${source.candidate.path}` : 'PDF上の位置を選択してください。'}{' '}
+                    {source?.draft && <Badge $tone={recognized ? 'edited' : 'warning'}>{recognized ? 'MusicXMLにも記録あり' : 'MusicXMLで欠落'}</Badge>}</span>
+                  <Actions>
+                    <button type="button" disabled={!source?.draft} onClick={() => showNavigationSource(mark.sourceMeasureIndex)}>この小節を見る</button>
+                    <button type="button" onClick={() => {
+                      setNavigationMarks((previous) => previous.filter((_, position) => position !== index));
+                      setNavigationOrderOverride(null);
+                      setNavigationConfirmed(false);
+                    }}>記号を削除</button>
+                  </Actions>
+                </CandidateHeader>
+              </Card>;
+            })}
+            <Actions>
+              <select aria-label="追加する進行記号" value={newNavigationKind}
+                onChange={(event) => setNewNavigationKind(event.target.value as OmrNavigationMark['kind'])}>
+                {Object.entries(navigationKindLabel).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
+              </select>
+              <button type="button" onClick={() => {
+                const source = currentSourceSlot && omrJob.artifacts.sourceLayout?.findIndex((slot) => omrSlotKey(slot) === omrSlotKey(currentSourceSlot));
+                setNavigationMarks((previous) => [...previous, {
+                  kind: newNavigationKind, sourceMeasureIndex: source !== undefined && source >= 0 ? source : 0,
+                  ...(newNavigationKind === 'dalSegno' || newNavigationKind === 'toCoda' ? { targetMeasureIndex: 0 } : {}),
+                  evidence: 'user-review',
+                }]);
+                setNavigationOrderOverride(null);
+                setNavigationConfirmed(false);
+              }}>記号を追加</button>
+            </Actions>
+            {navigationPlan?.issues.length ? <IssueList>{navigationPlan.issues.map((issue, index) =>
+              <IssueItem key={`${issue.code}:${index}`} $severity="error">{issue.message}</IssueItem>)}</IssueList> : null}
+            {Boolean(navigationPlan?.baselineOrder.length) && <>
+              <p>MusicXML由来の演奏順: {navigationPlan!.baselineOrder.length}小節。{navigationPlan!.ready
+                ? `進行記号を加えた提案: ${navigationPlan!.proposedOrder.length}小節。`
+                : '記号から演奏順を提案できません。原PDFの全曲順を直接入力してください。'}</p>
+              <Field>原PDFで確認した全曲の演奏順（譜面小節番号。例: 1-8, 5-8, 9-12）
+                <textarea rows={3} value={navigationOrderText} onChange={(event) => {
+                  setNavigationOrderOverride(event.target.value);
+                  setNavigationConfirmed(false);
+                }} />
+              </Field>
+              <small>D.S.時の反復や番括弧がMusicXMLで欠ける場合、提案だけでは正しい演奏順になりません。原PDFと照合してこの欄を修正してください。</small>
+              {navigationOrderOverride !== null && <button type="button" onClick={() => {
+                setNavigationOrderOverride(null);
+                setNavigationConfirmed(false);
+              }}>提案順に戻す</button>}
+              {navigationOrder.error && <Notice role="alert" $tone="error">{navigationOrder.error}</Notice>}
+              {navigationOrder.order && <p>入力した演奏順: {navigationOrder.order.length}小節。</p>}
+              {navigationRequired && navigationOrder.order && <label><input type="checkbox" checked={navigationConfirmed}
+                onChange={(event) => setNavigationConfirmed(event.target.checked)} /> 原PDFの進行記号・ジャンプ先・全曲の演奏順を確認した</label>}
+            </>}
+          </Card>
+        </Panel>
+      )}
+
       {!draft && (
         <Panel>
           <Heading>
@@ -651,12 +823,14 @@ function ImportReview() {
                 <dt>小節</dt><dd>譜面上 {currentMeasure.sourceMeasureNumber} / 演奏順 {selectedMeasure + 1} / {currentMeasure.occurrence}回目</dd>
                 {currentSourceSlot && <><dt>PDF位置</dt><dd>{currentSourceSlot.pdfPage}ページ・譜面領域{currentSourceSlot.pageId}・{currentSourceSlot.systemIndex + 1}段目・{currentSourceSlot.stackIndex + 1}小節目</dd></>}
                 <dt>時間</dt><dd>{currentMeasure.startTick}–{currentMeasure.startTick + currentMeasure.durationTicks} tick</dd>
-                <dt>構造</dt><dd>{(() => {
+                <dt>MusicXMLの構造</dt><dd>{(() => {
                   const source = draft.score.sourceMeasures.find((item) => item.partId === draft.score.parts[0]?.id && item.measureIndex === currentMeasure.sourceMeasureIndex);
                   if (!source) return '記録なし';
                   const flags = [source.repeat.forward ? '反復開始' : '', source.repeat.backwardTimes ? `反復終了 ×${source.repeat.backwardTimes}` : '', source.directions.segno ? 'Segno' : '', source.directions.coda ? 'Coda' : '', source.directions.dacapo ? 'D.C.' : '', source.directions.dalsegno ? 'D.S.' : '', source.directions.tocoda ? 'To Coda' : '', source.directions.fine ? 'Fine' : ''].filter(Boolean);
                   return flags.join(' / ') || '通常';
                 })()}</dd>
+                {currentNavigationMarks.length > 0 && <><dt>原PDFの進行記号</dt>
+                  <dd>{currentNavigationMarks.map((mark) => navigationKindLabel[mark.kind]).join(' / ')}</dd></>}
               </Metadata>
               <Actions>
                 <button type="button" disabled={selectedMeasure === 0} onClick={() => replaceDraft(moveImportDraftLinearMeasure(draft, selectedMeasure, selectedMeasure - 1))}>演奏順を前へ</button>
@@ -747,8 +921,8 @@ function ImportReview() {
                 <p>プレビューは一時的な Song を再生するだけです。確定すると、この端末の保存済み楽曲へ追加して編集画面を開きます。</p>
               </div>
               <Actions>
-                <button type="button" disabled={!validation?.valid || isPlaying || isMultiCandidateJob && (!mergePlan?.ready || !coverageConfirmed)} onClick={() => void handlePreview()}>{isPlaying ? '再生中…' : isMultiCandidateJob ? '結合したSongをプレビュー' : 'Songとしてプレビュー'}</button>
-                <button type="button" disabled={!validation?.valid || isMultiCandidateJob && (!mergePlan?.ready || !coverageConfirmed)} onClick={handleConfirm}>{isMultiCandidateJob ? '全候補を1曲として保存' : 'Songへ確定して保存'}</button>
+                <button type="button" disabled={!validation?.valid || isPlaying || isMultiCandidateJob && (!mergePlan?.ready || !coverageConfirmed) || !navigationReady} onClick={() => void handlePreview()}>{isPlaying ? '再生中…' : isMultiCandidateJob ? '結合したSongをプレビュー' : 'Songとしてプレビュー'}</button>
+                <button type="button" disabled={!validation?.valid || isMultiCandidateJob && (!mergePlan?.ready || !coverageConfirmed) || !navigationReady} onClick={handleConfirm}>{isMultiCandidateJob ? '全候補を1曲として保存' : 'Songへ確定して保存'}</button>
               </Actions>
             </CandidateHeader>
             {!validation?.valid && <Notice $tone="error">未解決エラー {errors.length} 件があるため、プレビューと確定はできません。警告は確認済みにできますが、エラーは対象データを修正する必要があります。</Notice>}

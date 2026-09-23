@@ -75,5 +75,9 @@ describe('OMR job to ImportDraft', () => {
     const malformedLayout = JSON.parse(await jobJson());
     malformedLayout.artifacts.sourceLayout = [{ pdfPage: 0, pageId: '1', systemIndex: 0, stackIndex: 0 }];
     expect(() => parseOmrJobArtifact(JSON.stringify(malformedLayout))).toThrow('形式が正しく');
+    const malformedHint = JSON.parse(await jobJson());
+    malformedHint.artifacts.sourceLayout = [{ pdfPage: 1, pageId: '1', systemIndex: 0, stackIndex: 0 }];
+    malformedHint.artifacts.navigationHints = [{ kind: 'dalSegno', sourceMeasureIndex: 5, evidence: 'manual-pdf-review' }];
+    expect(() => parseOmrJobArtifact(JSON.stringify(malformedHint))).toThrow('形式が正しく');
   });
 });
