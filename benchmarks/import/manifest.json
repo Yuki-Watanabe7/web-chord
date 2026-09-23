@@ -112,7 +112,7 @@
   "candidateSets": [
     {
       "id": "regression-probe-v1",
-      "description": "Synthetic converter output with deliberate errors used to regression-test every report path.",
+      "description": "Synthetic report-regression data: source-verified intro-m1 and deliberate errors in the other segments.",
       "converter": {
         "name": "fixture-regression-probe",
         "version": "1.0.0",

@@ -54,17 +54,22 @@ describe('import benchmark', () => {
 
     expect(second).toEqual(first);
     expect(first.summary.errorCount).toBeGreaterThan(0);
-    expect(first.summary.manualCorrectionMeasures).toBe(3);
+    expect(first.summary.manualCorrectionMeasures).toBe(2);
+    expect(first.summary.chords.normalizedAccuracy.rate).toBeGreaterThanOrEqual(0.9);
+    expect(first.summary.melody.pitch.f1).toBeGreaterThanOrEqual(0.85);
+    const intro = first.scores.find((score) => score.scoreId === 'sekai-ga-hitotsu-ni-naru-made');
+    expect(intro?.metrics.chords.normalizedAccuracy.rate).toBe(1);
+    expect(intro?.metrics.melody.pitch.f1).toBe(1);
+    expect(first.errors.some((error) => error.scoreId === 'sekai-ga-hitotsu-ni-naru-made')).toBe(false);
     expect(first.errors).toEqual(expect.arrayContaining([
-      expect.objectContaining({ scoreId: 'sekai-ga-hitotsu-ni-naru-made', measure: 1, field: 'chord.normalized' }),
       expect.objectContaining({ scoreId: 'charismax', measure: 19, field: 'melody.pitch' }),
       expect.objectContaining({ scoreId: 'automatic', measure: 3, field: 'structure.key' }),
       expect.objectContaining({ scoreId: 'automatic', measure: 3, field: 'structure.navigation' }),
     ]));
 
     const markdown = formatMarkdownReport(first);
-    expect(markdown).toContain('sekai-ga-hitotsu-ni-naru-made / measure 1 / chord.normalized');
     expect(markdown).toContain('charismax / measure 19 / melody.pitch');
     expect(markdown).toContain('automatic / measure 3 / structure.key');
+    expect(markdown).not.toContain('sekai-ga-hitotsu-ni-naru-made / measure 1 /');
   });
 });
