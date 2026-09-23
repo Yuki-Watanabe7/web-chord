@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import styled from '@emotion/styled';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  addImportDraftKeySignature,
+  addImportDraftTempo,
   confirmImportDraftToSong,
   getImportIssueKey,
   getUnresolvedImportDraftIssues,
   moveImportDraftLinearMeasure,
   selectImportDraftMelody,
   setImportDraftIssueResolved,
+  toggleImportDraftMelodyExcluded,
   updateImportDraftChange,
   updateImportDraftChordStructure,
   updateImportDraftChordSymbol,
@@ -18,6 +21,7 @@ import {
 import { noteNameToChordPitch } from '../domain/music/chordSymbol';
 import { NOTE_NAMES } from '../domain/music/chords';
 import { parseMusicXmlFileToImportDraft } from '../domain/music/musicXmlImport';
+import { parseOmrCandidateToImportDraft, parseOmrJobArtifact } from '../domain/music/omrJobImport';
 import { createSongPlaybackSynths, playSong } from '../services/playback';
 import { saveSong } from '../services/songStorage';
 import type {
@@ -32,6 +36,7 @@ import type {
 } from '../domain/music/importDraft';
 import type { ChordDegree, ChordKind, NoteName } from '../domain/music/types';
 import type { SongPlaybackSynths } from '../services/playback';
+import type { OmrJobArtifact } from '../domain/music/omrJobImport';
 
 const Page = styled.div`
   max-width: 1440px;
@@ -272,7 +277,7 @@ const Code = styled.code`
 
 interface ReviewState {
   draft?: ImportDraft;
-  pdf?: { url: string; fileName: string; size: number };
+  pdf?: { file: File; fileName: string; size: number };
 }
 
 const cloneDraft = (draft: ImportDraft): ImportDraft => JSON.parse(JSON.stringify(draft)) as ImportDraft;
@@ -281,7 +286,7 @@ const candidateMeasureKey = (candidate: ImportCandidate<{ startTick: number } | 
 const linearMeasureKey = (measure: ImportDraft['score']['linearMeasures'][number]) =>
   `${measure.sourceMeasureIndex}:${measure.occurrence}`;
 const sourceLabel = (issue: ImportIssue) => issue.source
-  ? `${issue.source.partName ?? issue.source.partId}・小節 ${issue.source.measureNumber}${issue.source.occurrence ? `（${issue.source.occurrence + 1}回目）` : ''}`
+  ? `${issue.source.partName ?? issue.source.partId}・小節 ${issue.source.measureNumber}${issue.source.occurrence ? `（${issue.source.occurrence}回目）` : ''}`
   : '曲全体';
 const degreesText = (degrees: ChordDegree[]) => degrees.map((degree) =>
   `${degree.type}:${degree.alter}:${degree.value}`).join(', ');
@@ -307,11 +312,14 @@ function ImportReview() {
   const [selectedMeasure, setSelectedMeasure] = useState(0);
   const [warningOnly, setWarningOnly] = useState(false);
   const [pdfPage, setPdfPage] = useState(1);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{ tone: 'warning' | 'error' | 'success'; text: string } | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [synth, setSynth] = useState<SongPlaybackSynths | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const jobInputRef = useRef<HTMLInputElement>(null);
+  const [omrJob, setOmrJob] = useState<OmrJobArtifact | null>(null);
 
   useEffect(() => {
     const nextSynth = createSongPlaybackSynths();
@@ -319,9 +327,12 @@ function ImportReview() {
     return () => nextSynth.dispose();
   }, []);
 
-  useEffect(() => () => {
-    if (state.pdf?.url) URL.revokeObjectURL(state.pdf.url);
-  }, [state.pdf?.url]);
+  useEffect(() => {
+    if (!state.pdf?.file) return;
+    const url = URL.createObjectURL(state.pdf.file);
+    setPdfUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [state.pdf?.file]);
 
   const validation = useMemo(() => draft ? validateImportDraft(draft) : null, [draft]);
   const unresolvedIssues = useMemo(() => draft ? getUnresolvedImportDraftIssues(draft) : [], [draft]);
@@ -370,17 +381,44 @@ function ImportReview() {
     setIsParsing(true);
     setActionMessage(null);
     try {
-      const parsed = await parseMusicXmlFileToImportDraft(file);
+      const parsed = omrJob
+        ? await parseOmrCandidateToImportDraft(omrJob, file)
+        : await parseMusicXmlFileToImportDraft(file);
       const copy = cloneDraft(parsed);
       setDraft(copy);
       setOriginalDraft(cloneDraft(parsed));
       setSelectedMeasure(0);
       setWarningOnly(false);
       setActionMessage({ tone: 'success', text: `「${file.name}」をレビュー用の下書きとして読み込みました。Songにはまだ保存していません。` });
-    } catch {
-      setActionMessage({ tone: 'error', text: 'MusicXMLを読み取れませんでした。ファイルを確認してもう一度選択してください。' });
+    } catch (error) {
+      setActionMessage({ tone: 'error', text: error instanceof Error ? error.message : 'MusicXMLを読み取れませんでした。' });
     } finally {
       setIsParsing(false);
+    }
+  };
+
+  const handleOmrJobFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const [file] = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const job = parseOmrJobArtifact(await file.text());
+      if (state.pdf) {
+        const pdfBytes = await state.pdf.file.arrayBuffer();
+        const digest = await crypto.subtle.digest('SHA-256', pdfBytes);
+        const pdfSha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+        if (pdfSha256 !== job.input.sha256) {
+          throw new Error('表示中の原PDFのSHA-256が job.json と一致しません。');
+        }
+      }
+      setOmrJob(job);
+      setDraft(null);
+      setOriginalDraft(null);
+      setSelectedMeasure(0);
+      setActionMessage({ tone: 'success', text: `OMRジョブ「${job.jobId}」を読み込みました。候補MusicXMLを選択してください。` });
+    } catch (error) {
+      setOmrJob(null);
+      setActionMessage({ tone: 'error', text: error instanceof Error ? error.message : 'job.jsonを読み取れませんでした。' });
     }
   };
 
@@ -437,6 +475,14 @@ function ImportReview() {
         </Heading>
         <Actions>
           <button type="button" onClick={() => navigate('/')}>一覧へ戻る</button>
+          <button type="button" onClick={() => jobInputRef.current?.click()} disabled={isParsing}>OMRジョブを選択</button>
+          <FileInput
+            ref={jobInputRef}
+            type="file"
+            accept=".json,application/json"
+            aria-label="OMRジョブのjob.jsonを選択"
+            onChange={handleOmrJobFile}
+          />
           <button type="button" onClick={() => importInputRef.current?.click()} disabled={isParsing}>
             {isParsing ? 'MusicXMLを読み込み中…' : 'MusicXMLを選択'}
           </button>
@@ -453,6 +499,26 @@ function ImportReview() {
 
       {actionMessage && <Notice role={actionMessage.tone === 'error' ? 'alert' : 'status'} $tone={actionMessage.tone}>{actionMessage.text}</Notice>}
 
+      {omrJob && (
+        <Panel>
+          <Heading>
+            <h1>OMRジョブの候補</h1>
+            <p>{omrJob.input.fileName} / Audiveris {omrJob.engine.version} / 候補 {omrJob.artifacts.musicXml.length}件</p>
+          </Heading>
+          <p>下の候補から確認するMusicXMLを選択してください。読み込み時にSHA-256を照合します。</p>
+          <ul>
+            {omrJob.artifacts.musicXml.map((candidate) => (
+              <li key={candidate.path}>{candidate.path}（{candidate.sourceOutput}、SHA-256: {candidate.sha256}）</li>
+            ))}
+          </ul>
+          {omrJob.diagnostics.length > 0 && <IssueList>
+            {omrJob.diagnostics.map((diagnostic) => <IssueItem key={diagnostic.code} $severity={diagnostic.severity}>
+              <span><Badge $tone={diagnostic.severity === 'error' ? 'error' : 'warning'}>{diagnostic.code}</Badge> {diagnostic.message}</span>
+            </IssueItem>)}
+          </IssueList>}
+        </Panel>
+      )}
+
       {!draft && (
         <Panel>
           <Heading>
@@ -462,7 +528,7 @@ function ImportReview() {
           {state.pdf ? (
             <>
               <Notice $tone="warning">「{state.pdf.fileName}」（{byteSize(state.pdf.size)}）はブラウザのメモリでプレビュー中です。原PDFは保存・送信しません。</Notice>
-              <p>PDFの認識はローカルの OMR コマンドで行います。元のファイルのあるターミナルで <Code>npm run omr:pdf -- --input "score.pdf"</Code> を実行し、出力された <Code>candidate-*.musicxml</Code> をここで選択してください。ページ数・暗号化・サイズなどの完全な事前確認も、そのコマンドが実施します。</p>
+              <p>PDFの認識はローカルの OMR コマンドで行います。元のファイルのあるターミナルで <Code>npm run omr:pdf -- --input "score.pdf"</Code> を実行し、先に <Code>job.json</Code>、次に <Code>candidate-*.musicxml</Code> を選択してください。ページ数・暗号化・サイズなどの完全な事前確認も、そのコマンドが実施します。</p>
             </>
           ) : (
             <Placeholder>PDFから始める場合は、一覧画面の「PDFを確認する」から原譜を選びます。ブラウザ内では重いOMR処理を行わず、ローカル処理で生成したMusicXMLだけをレビューします。</Placeholder>
@@ -478,6 +544,7 @@ function ImportReview() {
                 <dt>入力</dt><dd>{draft.source.fileName}</dd>
                 <dt>MusicXML</dt><dd>{draft.source.musicXmlVersion ?? '不明'} / PPQ {draft.ticksPerQuarter}</dd>
                 <dt>生成元</dt><dd>{draft.source.generators.join(', ') || '記録なし'}{draft.source.omrEngine ? ` / OMR: ${draft.source.omrEngine}` : ''}</dd>
+                {draft.source.omrJob && <><dt>OMR候補</dt><dd>{draft.source.omrJob.jobId} / {draft.source.omrJob.candidatePath}（全{draft.source.omrJob.candidateCount}候補）</dd></>}
                 <dt>処理範囲</dt><dd>{draft.score.parts.length}パート、演奏順 {draft.score.linearMeasures.length}小節</dd>
               </Metadata>
               <Summary aria-live="polite">
@@ -496,16 +563,16 @@ function ImportReview() {
                   <input type="number" min="1" value={pdfPage} onChange={(event) => setPdfPage(Math.max(1, Number(event.target.value) || 1))} />
                 </Field>}
               </CandidateHeader>
-              {state.pdf ? (
-                <PdfFrame title={`${state.pdf.fileName} のページ ${pdfPage}`} src={`${state.pdf.url}#page=${pdfPage}`} />
+              {state.pdf && pdfUrl ? (
+                <PdfFrame title={`${state.pdf.fileName} のページ ${pdfPage}`} src={`${pdfUrl}#page=${pdfPage}`} />
               ) : (
                 <Placeholder>
                   原PDFは添付されていません。PDFも一覧画面の「楽譜を読み込む」から選択すると、この欄で並べて確認できます。<br />
-                  現在の出典は小節 {currentMeasure.sourceMeasureNumber}、演奏順 {selectedMeasure + 1} 番目（{currentMeasure.occurrence + 1}回目）です。
+                  現在の出典は小節 {currentMeasure.sourceMeasureNumber}、演奏順 {selectedMeasure + 1} 番目（{currentMeasure.occurrence}回目）です。
                 </Placeholder>
               )}
               <Metadata>
-                <dt>小節</dt><dd>譜面上 {currentMeasure.sourceMeasureNumber} / 演奏順 {selectedMeasure + 1} / {currentMeasure.occurrence + 1}回目</dd>
+                <dt>小節</dt><dd>譜面上 {currentMeasure.sourceMeasureNumber} / 演奏順 {selectedMeasure + 1} / {currentMeasure.occurrence}回目</dd>
                 <dt>時間</dt><dd>{currentMeasure.startTick}–{currentMeasure.startTick + currentMeasure.durationTicks} tick</dd>
                 <dt>構造</dt><dd>{(() => {
                   const source = draft.score.sourceMeasures.find((item) => item.partId === draft.score.parts[0]?.id && item.measureIndex === currentMeasure.sourceMeasureIndex);
@@ -538,7 +605,7 @@ function ImportReview() {
                   <select value={selectedMeasure} onChange={(event) => setMeasureByIndex(Number(event.target.value))} aria-label="レビューする小節">
                     {navigableMeasures.map((measure) => {
                       const index = measures.indexOf(measure);
-                      return <option key={`${index}:${linearMeasureKey(measure)}`} value={index}>演奏順 {index + 1}: 小節 {measure.sourceMeasureNumber}（{measure.occurrence + 1}回目）</option>;
+                      return <option key={`${index}:${linearMeasureKey(measure)}`} value={index}>演奏順 {index + 1}: 小節 {measure.sourceMeasureNumber}（{measure.occurrence}回目）</option>;
                     })}
                   </select>
                   <button type="button" disabled={selectedMeasure === measures.length - 1} onClick={() => setMeasureByIndex(selectedMeasure + 1)}>次の小節</button>
@@ -569,6 +636,7 @@ function ImportReview() {
                   candidate.source.staff === draft.melodySelection.selected?.staff &&
                   candidate.source.voice === draft.melodySelection.selected?.voice)}
                 onChange={(id, normalized) => replaceDraft(updateImportDraftMelodyNote(draft, id, normalized))}
+                onToggleExcluded={(id) => replaceDraft(toggleImportDraftMelodyExcluded(draft, id))}
               />
 
               <ChangeCandidates
@@ -578,6 +646,8 @@ function ImportReview() {
                 onKeyChange={(id, normalized) => replaceDraft(updateImportDraftChange(draft, 'keySignatures', id, normalized))}
                 onTimeChange={(id, normalized) => replaceDraft(updateImportDraftChange(draft, 'timeSignatures', id, normalized))}
                 onTempoChange={(id, normalized) => replaceDraft(updateImportDraftChange(draft, 'tempos', id, normalized))}
+                onAddKey={() => replaceDraft(addImportDraftKeySignature(draft, selectedMeasure))}
+                onAddTempo={() => replaceDraft(addImportDraftTempo(draft, selectedMeasure))}
               />
 
               {validation && validation.issues.filter((issue) => !issue.source).length > 0 && (
@@ -751,9 +821,10 @@ function ChordCandidates({
   );
 }
 
-function MelodyCandidates({ candidates, onChange }: {
+function MelodyCandidates({ candidates, onChange, onToggleExcluded }: {
   candidates: Array<ImportCandidate<ImportedMelodyNote>>;
   onChange: (id: string, normalized: ImportedMelodyNote) => void;
+  onToggleExcluded: (id: string) => void;
 }) {
   if (candidates.length === 0) return null;
   return (
@@ -769,6 +840,9 @@ function MelodyCandidates({ candidates, onChange }: {
               <Summary>
                 <Badge $tone={candidate.reviewStatus === 'edited' ? 'edited' : 'muted'}>{candidate.reviewStatus}</Badge>
                 {isLowConfidence(candidate) && <Badge $tone="warning">信頼度 {Math.round((candidate.confidence ?? 0) * 100)}%</Badge>}
+                <button type="button" onClick={() => onToggleExcluded(candidate.id)}>
+                  {candidate.reviewStatus === 'excluded' ? 'Songに戻す' : 'この音符をSongから除外'}
+                </button>
               </Summary>
             </CandidateHeader>
             <FieldGrid>
@@ -810,6 +884,8 @@ function ChangeCandidates({
   onKeyChange,
   onTimeChange,
   onTempoChange,
+  onAddKey,
+  onAddTempo,
 }: {
   keyCandidates: Array<ImportCandidate<ImportedKeySignature>>;
   timeCandidates: Array<ImportCandidate<ImportedTimeSignature>>;
@@ -817,11 +893,16 @@ function ChangeCandidates({
   onKeyChange: (id: string, normalized: ImportedKeySignature) => void;
   onTimeChange: (id: string, normalized: ImportedTimeSignature) => void;
   onTempoChange: (id: string, normalized: ImportedTempo) => void;
+  onAddKey: () => void;
+  onAddTempo: () => void;
 }) {
-  if (!keyCandidates.length && !timeCandidates.length && !tempoCandidates.length) return null;
   return (
     <Card>
       <h2>調・拍子・テンポ変更</h2>
+      <Actions>
+        {keyCandidates.length === 0 && <button type="button" onClick={onAddKey}>この小節に調を追加</button>}
+        {tempoCandidates.length === 0 && <button type="button" onClick={onAddTempo}>この小節にテンポを追加</button>}
+      </Actions>
       {keyCandidates.map((candidate) => <FieldGrid key={candidate.id}>
         <Field>調（原認識: {candidate.raw}）
           <select value={candidate.normalized.key.tonic} onChange={(event) => onKeyChange(candidate.id, { ...candidate.normalized, key: { ...candidate.normalized.key, tonic: event.target.value as NoteName } })}>{NOTE_NAMES.map((note) => <option key={note} value={note}>{note}</option>)}</select>

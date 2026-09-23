@@ -183,6 +183,44 @@ const orderedPairs = (expectedEvents, actualEvents) => {
   return pairs;
 };
 
+const alignedMelodyPairs = (expectedEvents, actualEvents, tolerance) => {
+  const measures = [...new Set([...expectedEvents, ...actualEvents].map((event) => event.measure))].sort((a, b) => a - b);
+  const pairs = [];
+  for (const measure of measures) {
+    const expected = expectedEvents.filter((event) => event.measure === measure);
+    const actual = actualEvents.filter((event) => event.measure === measure);
+    const gapCost = 3;
+    const cost = (left, right) => (left.midi === right.midi ? 0 : 2)
+      + Math.min(2, Math.abs(left.onsetTick - right.onsetTick) / Math.max(1, tolerance.onsetTicks))
+      + Math.min(1, Math.abs(left.durationTicks - right.durationTicks) / Math.max(1, tolerance.durationTicks));
+    const table = Array.from({ length: expected.length + 1 }, () => Array(actual.length + 1).fill(0));
+    const steps = Array.from({ length: expected.length + 1 }, () => Array(actual.length + 1).fill(''));
+    for (let i = 1; i <= expected.length; i += 1) { table[i][0] = i * gapCost; steps[i][0] = 'missing'; }
+    for (let j = 1; j <= actual.length; j += 1) { table[0][j] = j * gapCost; steps[0][j] = 'unexpected'; }
+    for (let i = 1; i <= expected.length; i += 1) {
+      for (let j = 1; j <= actual.length; j += 1) {
+        const match = table[i - 1][j - 1] + cost(expected[i - 1], actual[j - 1]);
+        const missing = table[i - 1][j] + gapCost;
+        const unexpected = table[i][j - 1] + gapCost;
+        const minimum = Math.min(match, missing, unexpected);
+        table[i][j] = minimum;
+        steps[i][j] = minimum === match ? 'match' : minimum === missing ? 'missing' : 'unexpected';
+      }
+    }
+    const measurePairs = [];
+    let i = expected.length;
+    let j = actual.length;
+    while (i > 0 || j > 0) {
+      const step = steps[i][j];
+      if (step === 'match') measurePairs.push({ measure, expected: expected[--i], actual: actual[--j] });
+      else if (step === 'missing') measurePairs.push({ measure, expected: expected[--i], actual: undefined });
+      else measurePairs.push({ measure, expected: undefined, actual: actual[--j] });
+    }
+    pairs.push(...measurePairs.reverse());
+  }
+  return pairs;
+};
+
 const addError = (errors, scoreId, segmentId, measure, field, code, expected, actual) => {
   errors.push({ scoreId, segmentId, measure, field, code, expected, actual });
 };
@@ -252,7 +290,7 @@ const evaluateMelody = (expected, actual, tolerance, context, errors) => {
   const precision = actual.length === 0 ? (expected.length === 0 ? 1 : 0) : pitchMatches / actual.length;
   const recall = expected.length === 0 ? 1 : pitchMatches / expected.length;
   const f1 = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
-  const pairs = orderedPairs(expected, actual);
+  const pairs = alignedMelodyPairs(expected, actual, tolerance);
   let onsetMatches = 0;
   let durationMatches = 0;
   let tieMatches = 0;
@@ -457,7 +495,7 @@ export const formatMarkdownReport = (report) => {
     `| Melody onset | ${percent(report.summary.melody.onsetAccuracy.rate)} |`,
     `| Melody duration | ${percent(report.summary.melody.durationAccuracy.rate)} |`,
     `| Structure playback order | ${percent(report.summary.structure.playbackOrder.rate)} |`,
-    `| Warning precision | ${percent(report.summary.warnings.rate)} |`,
+    `| Warning precision | ${report.summary.warnings.total === 0 ? 'N/A (0 warnings)' : percent(report.summary.warnings.rate)} |`,
     `| Measures needing correction | ${report.summary.manualCorrectionMeasures} |`,
     '',
     '## Errors by score and measure',

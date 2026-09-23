@@ -72,4 +72,22 @@ describe('import benchmark', () => {
     expect(markdown).toContain('automatic / measure 3 / structure.key');
     expect(markdown).not.toContain('sekai-ga-hitotsu-ni-naru-made / measure 1 /');
   });
+
+  it('aligns melody events when OMR inserts a note before otherwise correct notes', async () => {
+    const benchmark = await loadBenchmark(manifestPath);
+    const candidates = new Map([...benchmark.expected].map(([key, value]) => [key, structuredClone(value)]));
+    const automatic = candidates.get('automatic/intro-m3');
+    automatic.melody.unshift({ measure: 3, onsetTick: 0, durationTicks: 480, midi: 72, tie: 'none' });
+    const report = evaluateBenchmark(benchmark, {
+      candidateSet: { id: 'alignment-test', converter: { name: 'test', version: '1' } },
+      candidates,
+    });
+    const score = report.scores.find((item) => item.scoreId === 'automatic');
+    expect(score.metrics.melody.onsetAccuracy).toEqual({ matched: 5, total: 6, rate: 5 / 6 });
+    expect(score.metrics.melody.durationAccuracy).toEqual({ matched: 5, total: 6, rate: 5 / 6 });
+    expect(score.metrics.errors.filter((error) => error.field.startsWith('melody.'))).toEqual([
+      expect.objectContaining({ measure: 3, field: 'melody.note', code: 'unexpected' }),
+    ]);
+    expect(formatMarkdownReport(report)).toContain('N/A (0 warnings)');
+  });
 });

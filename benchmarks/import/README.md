@@ -20,6 +20,8 @@ benchmarks/import/
 
 `regression-probe-v1`は実在するOMR変換器の精度を示すものではありません。「世界がひとつになるまで」1小節目を原譜と一致させ、他の区間には誤った音符、tick、調、タイなどを意図的に残しています。評価処理が項目別・小節別に誤りを出せることを固定するテスト入力です。
 
+`audiveris-5.11.0-real-omr-v1`は、3つのSHA-256確認済み原PDFを実際にAudiverisで処理した代表区間です。候補hash、選択根拠、曲別指標、修正内容、画面受入の残作業は[`real-omr-qualification.md`](real-omr-qualification.md)を参照してください。全曲MusicXMLや原PDFは含みません。
+
 ### Issue #49: 1小節目の照合と候補修正
 
 `manifest.json`に記録したSHA-256 `268470b174d8583517be09f073b20a833025bde1925aa2e61e1fe349cda2b114` の原PDFをローカルでレンダリングし、1ページ目・1段目・1小節目を目視で照合しました。上段のコード表記は小節の前半が `F`、後半が `C/E` です。ト音記号の旋律は A4, A4, B4, C5, D5, C5, G4, G4（MIDI 69, 69, 71, 72, 74, 72, 67, 67）で、長さは四分・16分×4・8分・四分・8分です。これに従って正解fixtureの音高を訂正しました。コードの位置と長さ、旋律の開始位置と長さは原譜と一致していたため維持しました。
@@ -70,6 +72,12 @@ npm run benchmark:import -- --format json --output /tmp/import-benchmark.json
 
 ```sh
 npm run benchmark:import -- --candidate <candidate-set-id>
+```
+
+実OMR候補の採点:
+
+```sh
+npm run benchmark:import -- --candidate audiveris-5.11.0-real-omr-v1
 ```
 
 レポートには次が含まれます。

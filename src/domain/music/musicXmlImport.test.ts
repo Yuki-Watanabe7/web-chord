@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addImportDraftKeySignature,
+  addImportDraftTempo,
   confirmImportDraftToSong,
   getUnresolvedImportDraftIssues,
   moveImportDraftLinearMeasure,
   selectImportDraftMelody,
   setImportDraftIssueResolved,
+  toggleImportDraftMelodyExcluded,
   updateImportDraftChordSymbol,
   updateImportDraftMelodyNote,
   validateImportDraft,
@@ -191,5 +194,42 @@ describe('MusicXML ImportDraft adapter', () => {
       expect.objectContaining({ measureIndex: 1, directions: expect.objectContaining({ coda: 'default' }) }),
       expect.objectContaining({ measureIndex: 2, directions: expect.objectContaining({ dalsegno: 'default' }) }),
     ]));
+  });
+
+  it('maps a minor key signature to its relative minor tonic', () => {
+    const draft = parseMusicXmlToImportDraft(`
+      <score-partwise version="4.0">
+        <part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list>
+        <part id="P1"><measure number="1">
+          <attributes><divisions>1</divisions><key><fifths>2</fifths><mode>minor</mode></key><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+          <note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration></note>
+        </measure></part>
+      </score-partwise>
+    `);
+    expect(draft.candidates.keySignatures[0]?.normalized.key).toEqual({ tonic: 'B', mode: 'minor' });
+  });
+
+  it('excludes a false OMR note and adds missing key and tempo during review', () => {
+    const original = parseMusicXmlToImportDraft(musicXmlImportFixture);
+    const selected = original.candidates.melodyNotes.find((candidate) => candidate.reviewStatus === 'auto-selected');
+    expect(selected).toBeDefined();
+    const withoutNote = toggleImportDraftMelodyExcluded(original, selected!.id);
+    expect(withoutNote.candidates.melodyNotes.find((candidate) => candidate.id === selected!.id)?.reviewStatus).toBe('excluded');
+    const withChanges = addImportDraftTempo(addImportDraftKeySignature(withoutNote, 1), 1);
+    expect(withChanges.candidates.keySignatures[withChanges.candidates.keySignatures.length - 1]).toMatchObject({
+      normalized: { tick: 480, key: { tonic: 'C', mode: 'major' } },
+      source: { measureNumber: '1' },
+      reviewStatus: 'edited',
+    });
+    expect(withChanges.candidates.tempos[withChanges.candidates.tempos.length - 1]?.normalized).toEqual({ tick: 480, bpm: 120 });
+    const initialSong = confirmImportDraftToSong(original);
+    const reviewedSong = confirmImportDraftToSong(withChanges);
+    expect(initialSong.ok && reviewedSong.ok).toBe(true);
+    if (initialSong.ok && reviewedSong.ok) {
+      expect(reviewedSong.song.melodyNotes.length).toBe(initialSong.song.melodyNotes.length - 1);
+      expect(reviewedSong.song.tempoEvents).toContainEqual({ tick: 480, bpm: 120 });
+    }
+    expect(toggleImportDraftMelodyExcluded(withoutNote, selected!.id).candidates.melodyNotes
+      .find((candidate) => candidate.id === selected!.id)?.reviewStatus).toBe('user-confirmed');
   });
 });

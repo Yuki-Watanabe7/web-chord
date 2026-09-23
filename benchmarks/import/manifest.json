@@ -121,6 +121,25 @@
         }
       },
       "directory": "candidates/regression-probe-v1"
+    },
+    {
+      "id": "audiveris-5.11.0-real-omr-v1",
+      "description": "Real Audiveris output from the three SHA-256-verified PDFs; only one representative measure per score is retained. Automatic intro uses candidate 1 (page 1).",
+      "converter": {
+        "name": "Audiveris + web-chord MusicXML ImportDraft",
+        "version": "5.11.0",
+        "options": {
+          "renderDpi": 300,
+          "inputMode": "pdf",
+          "engine": "local",
+          "selectedCandidates": {
+            "sekai-ga-hitotsu-ni-naru-made": "omr-4be10aee8cb43fa686cd/musicxml/candidate-1.musicxml",
+            "charismax": "omr-49993bac3d745f8ca3a8/musicxml/candidate-1.musicxml",
+            "automatic": "omr-3c64bf54b45780de6eec/musicxml/candidate-1.musicxml"
+          }
+        }
+      },
+      "directory": "candidates/audiveris-5.11.0-real-omr-v1"
     }
   ]
 }
