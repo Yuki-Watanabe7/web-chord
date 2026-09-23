@@ -1,4 +1,8 @@
-import { chordSymbolToLegacyFields } from './chordSymbol';
+import {
+  chordSymbolToLegacyFields,
+  parseChordSymbol,
+  serializeNormalizedChordSymbol,
+} from './chordSymbol';
 import { createEmptySong, MAX_TOTAL_MEASURES } from './timeline';
 import { validateSongTiming } from './timing';
 import type {
@@ -54,6 +58,8 @@ export interface ImportCandidate<T> {
   normalized: T;
   /** Score spelling or source value, retained independently from normalized data. */
   raw: string;
+  /** Reviewer-entered source text. `raw` remains the immutable parser output. */
+  reviewRaw?: string;
   source: ImportSourceLocation;
   confidence?: number;
   reviewStatus: ImportReviewStatus;
@@ -160,6 +166,8 @@ export interface ImportDraft {
   };
   melodySelection: MelodySelection;
   issues: ImportIssue[];
+  /** Warning acknowledgements made during review. Parser errors remain blocking. */
+  resolvedIssueKeys?: string[];
 }
 
 export interface ImportDraftValidation {
@@ -177,6 +185,18 @@ export interface ConfirmImportDraftOptions {
 export type ConfirmImportDraftResult =
   | { ok: true; song: Song; validation: ImportDraftValidation }
   | { ok: false; validation: ImportDraftValidation };
+
+/** A stable identifier for tracking a reviewed warning without mutating its source record. */
+export const getImportIssueKey = (issue: ImportIssue) => JSON.stringify([
+  issue.severity,
+  issue.code,
+  issue.message,
+  issue.source?.partId,
+  issue.source?.measureIndex,
+  issue.source?.staff,
+  issue.source?.voice,
+  issue.source?.occurrence,
+]);
 
 const compareText = (first: string, second: string) => first === second ? 0 : first < second ? -1 : 1;
 const compareCandidate = <T extends { startTick: number }>(first: ImportCandidate<T>, second: ImportCandidate<T>) =>
@@ -235,7 +255,7 @@ export const validateImportDraft = (draft: ImportDraft): ImportDraftValidation =
   const selectedNotes = draft.candidates.melodyNotes.filter((candidate) =>
     candidate.source.partId === selected?.partId &&
     candidate.source.staff === selected.staff &&
-    candidate.source.voice === selected.voice,
+    candidate.source.voice === selected.voice && !candidate.normalized.isGrace && candidate.normalized.durationTicks > 0,
   );
 
   if (selected && selectedNotes.length === 0) {
@@ -255,7 +275,70 @@ export const validateImportDraft = (draft: ImportDraft): ImportDraftValidation =
     });
   });
 
+  draft.candidates.melodyNotes.forEach((candidate) => {
+    const note = candidate.normalized;
+    if (!Number.isInteger(note.startTick) || note.startTick < 0 || !Number.isInteger(note.durationTicks) || note.durationTicks < 0 ||
+      (!note.isGrace && note.durationTicks === 0) || note.velocity < 0 || note.velocity > 1) {
+      issues.push({
+        severity: 'error',
+        code: 'invalid-melody-note',
+        message: '主旋律のpitch、tick、長さ、velocityのいずれかが確定可能な値ではありません。',
+        source: candidate.source,
+      });
+    }
+  });
+  draft.candidates.chords.forEach((candidate) => {
+    const chord = candidate.normalized;
+    if (!Number.isInteger(chord.startTick) || chord.startTick < 0 || !Number.isInteger(chord.durationTicks) || chord.durationTicks <= 0) {
+      issues.push({
+        severity: 'error',
+        code: 'invalid-chord-timing',
+        message: 'コードの開始tickまたは長さが確定可能な値ではありません。',
+        source: candidate.source,
+      });
+    }
+  });
+  draft.candidates.keySignatures.forEach((candidate) => {
+    if (!Number.isInteger(candidate.normalized.tick) || candidate.normalized.tick < 0) {
+      issues.push({ severity: 'error', code: 'invalid-key-tick', message: '調変更のtickが確定可能な値ではありません。', source: candidate.source });
+    }
+  });
+  draft.candidates.timeSignatures.forEach((candidate) => {
+    const event = candidate.normalized;
+    if (!Number.isInteger(event.tick) || event.tick < 0 || event.timeSignature.beatsPerMeasure <= 0 || event.timeSignature.beatUnit <= 0) {
+      issues.push({ severity: 'error', code: 'invalid-time-signature', message: '拍子変更の値が確定可能な値ではありません。', source: candidate.source });
+    }
+  });
+  draft.candidates.tempos.forEach((candidate) => {
+    if (!Number.isInteger(candidate.normalized.tick) || candidate.normalized.tick < 0 || candidate.normalized.bpm <= 0) {
+      issues.push({ severity: 'error', code: 'invalid-tempo', message: 'テンポ変更の値が確定可能な値ではありません。', source: candidate.source });
+    }
+  });
+
   return { valid: !issues.some((issue) => issue.severity === 'error'), issues };
+};
+
+/** Returns validation issues that have not been explicitly reviewed by the user. */
+export const getUnresolvedImportDraftIssues = (draft: ImportDraft): ImportIssue[] => {
+  const resolved = new Set(draft.resolvedIssueKeys);
+  return validateImportDraft(draft).issues.filter((issue) =>
+    issue.severity === 'error' || !resolved.has(getImportIssueKey(issue)));
+};
+
+/** Marks or re-opens a warning after the reviewer has checked the source score. */
+export const setImportDraftIssueResolved = (
+  draft: ImportDraft,
+  issue: ImportIssue,
+  resolved: boolean,
+): ImportDraft => {
+  if (issue.severity === 'error') return draft;
+
+  const key = getImportIssueKey(issue);
+  const keys = new Set(draft.resolvedIssueKeys);
+  if (resolved) keys.add(key);
+  else keys.delete(key);
+
+  return { ...draft, resolvedIssueKeys: [...keys] };
 };
 
 /**
@@ -290,6 +373,171 @@ export const selectImportDraftMelody = (
   };
 };
 
+/** Updates one melody candidate while retaining the original source value and provenance. */
+export const updateImportDraftMelodyNote = (
+  draft: ImportDraft,
+  id: string,
+  normalized: ImportedMelodyNote,
+): ImportDraft => ({
+  ...draft,
+  candidates: {
+    ...draft.candidates,
+    melodyNotes: draft.candidates.melodyNotes.map((candidate) => candidate.id === id ? {
+      ...candidate,
+      normalized: { ...normalized, tie: normalized.tie ? { ...normalized.tie } : undefined },
+      reviewStatus: 'edited',
+    } : candidate),
+  },
+});
+
+/** Updates timing for a chord candidate without changing its score spelling. */
+export const updateImportDraftChordTiming = (
+  draft: ImportDraft,
+  id: string,
+  timing: Pick<ImportedChord, 'startTick' | 'durationTicks'>,
+): ImportDraft => ({
+  ...draft,
+  candidates: {
+    ...draft.candidates,
+    chords: draft.candidates.chords.map((candidate) => candidate.id === id ? {
+      ...candidate,
+      normalized: { ...candidate.normalized, ...timing },
+      reviewStatus: 'edited',
+    } : candidate),
+  },
+});
+
+/**
+ * Re-parses a reviewer-entered chord symbol. The score value remains in `raw`
+ * and the normalized structure is regenerated together, so the two cannot
+ * silently drift apart.
+ */
+export const updateImportDraftChordSymbol = (
+  draft: ImportDraft,
+  id: string,
+  raw: string,
+): ImportDraft => ({
+  ...draft,
+  candidates: {
+    ...draft.candidates,
+    chords: draft.candidates.chords.map((candidate) => {
+      if (candidate.id !== id) return candidate;
+      const chordSymbol = parseChordSymbol(raw);
+      const legacy = chordSymbolToLegacyFields(chordSymbol, candidate.normalized.root);
+      return {
+        ...candidate,
+        reviewRaw: raw.trim(),
+        normalized: { ...candidate.normalized, ...legacy, chordSymbol },
+        reviewStatus: 'edited' as ImportReviewStatus,
+      };
+    }),
+  },
+});
+
+/** Applies a structured chord edit and regenerates a deterministic score symbol. */
+export const updateImportDraftChordStructure = (
+  draft: ImportDraft,
+  id: string,
+  chordSymbol: ChordSymbol,
+): ImportDraft => ({
+  ...draft,
+  candidates: {
+    ...draft.candidates,
+    chords: draft.candidates.chords.map((candidate) => {
+      if (candidate.id !== id) return candidate;
+      const raw = serializeNormalizedChordSymbol(chordSymbol);
+      const normalizedSymbol = { ...chordSymbol, raw, normalized: raw.replace(/♯/g, '#').replace(/♭/g, 'b').replace(/\s+/g, '') };
+      const legacy = chordSymbolToLegacyFields(normalizedSymbol, candidate.normalized.root);
+      return {
+        ...candidate,
+        reviewRaw: raw,
+        normalized: { ...candidate.normalized, ...legacy, chordSymbol: normalizedSymbol },
+        reviewStatus: 'edited' as ImportReviewStatus,
+      };
+    }),
+  },
+});
+
+/** Changes a key, time-signature, or tempo event in the review draft. */
+export const updateImportDraftChange = <T extends ImportedKeySignature | ImportedTimeSignature | ImportedTempo>(
+  draft: ImportDraft,
+  collection: 'keySignatures' | 'timeSignatures' | 'tempos',
+  id: string,
+  normalized: T,
+): ImportDraft => ({
+  ...draft,
+  candidates: {
+    ...draft.candidates,
+    [collection]: draft.candidates[collection].map((candidate) => candidate.id === id ? {
+      ...candidate,
+      normalized,
+      reviewStatus: 'edited' as ImportReviewStatus,
+    } : candidate),
+  },
+});
+
+/**
+ * Moves one expanded measure in the playback order and rebases every imported
+ * event from that measure. This is intentionally limited to reordering already
+ * parsed measures; it does not invent repeat notation or discard source data.
+ */
+export const moveImportDraftLinearMeasure = (
+  draft: ImportDraft,
+  fromIndex: number,
+  toIndex: number,
+): ImportDraft => {
+  const original = draft.score.linearMeasures;
+  if (
+    fromIndex < 0 || fromIndex >= original.length || toIndex < 0 || toIndex >= original.length || fromIndex === toIndex
+  ) return draft;
+
+  const reordered = [...original];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(toIndex, 0, moved);
+  let nextStartTick = 0;
+  const linearMeasures = reordered.map((measure, index) => {
+    const next = { ...measure, index, startTick: nextStartTick };
+    nextStartTick += measure.durationTicks;
+    return next;
+  });
+  const oldStarts = new Map(original.map((measure) => [`${measure.sourceMeasureIndex}:${measure.occurrence}`, measure.startTick]));
+  const newStarts = new Map(linearMeasures.map((measure) => [`${measure.sourceMeasureIndex}:${measure.occurrence}`, measure.startTick]));
+  const rebaseTick = <T extends { startTick: number }>(candidate: ImportCandidate<T>) => {
+    const key = `${candidate.source.measureIndex}:${candidate.source.occurrence ?? 0}`;
+    const oldStart = oldStarts.get(key);
+    const newStart = newStarts.get(key);
+    if (oldStart === undefined || newStart === undefined) return candidate;
+    return {
+      ...candidate,
+      normalized: { ...candidate.normalized, startTick: newStart + candidate.normalized.startTick - oldStart },
+      reviewStatus: 'edited' as ImportReviewStatus,
+    };
+  };
+  const rebaseChangeTick = <T extends { tick: number }>(candidate: ImportCandidate<T>) => {
+    const key = `${candidate.source.measureIndex}:${candidate.source.occurrence ?? 0}`;
+    const oldStart = oldStarts.get(key);
+    const newStart = newStarts.get(key);
+    if (oldStart === undefined || newStart === undefined) return candidate;
+    return {
+      ...candidate,
+      normalized: { ...candidate.normalized, tick: newStart + candidate.normalized.tick - oldStart },
+      reviewStatus: 'edited' as ImportReviewStatus,
+    };
+  };
+
+  return {
+    ...draft,
+    score: { ...draft.score, linearMeasures },
+    candidates: {
+      melodyNotes: draft.candidates.melodyNotes.map(rebaseTick),
+      chords: draft.candidates.chords.map(rebaseTick),
+      keySignatures: draft.candidates.keySignatures.map(rebaseChangeTick),
+      timeSignatures: draft.candidates.timeSignatures.map(rebaseChangeTick),
+      tempos: draft.candidates.tempos.map(rebaseChangeTick),
+    },
+  };
+};
+
 /** Creates a Song only after validation, keeping the import and editor models separate. */
 export const confirmImportDraftToSong = (
   draft: ImportDraft,
@@ -318,7 +566,7 @@ export const confirmImportDraftToSong = (
       durationTicks: candidate.normalized.durationTicks,
       tie: candidate.normalized.tie,
     }));
-  const chords = draft.candidates.chords
+  const chords = [...draft.candidates.chords]
     .sort(compareCandidate)
     .filter((candidate) => candidate.reviewStatus !== 'unselected' && candidate.normalized.durationTicks > 0)
     .map((candidate) => ({ id: candidate.id, ...candidate.normalized }));

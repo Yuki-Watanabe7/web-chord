@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { confirmImportDraftToSong, selectImportDraftMelody, validateImportDraft } from './importDraft';
+import {
+  confirmImportDraftToSong,
+  getUnresolvedImportDraftIssues,
+  moveImportDraftLinearMeasure,
+  selectImportDraftMelody,
+  setImportDraftIssueResolved,
+  updateImportDraftChordSymbol,
+  updateImportDraftMelodyNote,
+  validateImportDraft,
+} from './importDraft';
 import { parseMusicXmlToImportDraft } from './musicXmlImport';
 import { musicXmlImportFixture } from './fixtures/musicXmlImport.fixture';
 
@@ -102,6 +111,65 @@ describe('MusicXML ImportDraft adapter', () => {
       status: 'user-confirmed',
     });
     expect(reselected.candidates.melodyNotes.some((candidate) => candidate.reviewStatus === 'user-confirmed')).toBe(true);
+  });
+
+  it('keeps source values while allowing review edits and warning acknowledgement', () => {
+    const draft = parseMusicXmlToImportDraft(musicXmlImportFixture);
+    const chord = draft.candidates.chords[0]!;
+    const note = draft.candidates.melodyNotes.find((candidate) => candidate.reviewStatus === 'auto-selected')!;
+    const warning = validateImportDraft(draft).issues.find((issue) => issue.severity === 'warning')!;
+    const withChordEdit = updateImportDraftChordSymbol(draft, chord.id, 'F♯m7♭5/A♯');
+    const withNoteEdit = updateImportDraftMelodyNote(withChordEdit, note.id, {
+      ...note.normalized,
+      pitch: 'F#',
+      startTick: note.normalized.startTick + 20,
+      tie: { id: 'review-tie', type: 'start' },
+    });
+    const reviewed = setImportDraftIssueResolved(withNoteEdit, warning, true);
+
+    expect(reviewed.candidates.chords[0]).toMatchObject({
+      raw: 'C7',
+      reviewRaw: 'F♯m7♭5/A♯',
+      reviewStatus: 'edited',
+      normalized: { root: 'F#', bass: 'A#', chordSymbol: { kind: 'half-diminished', extension: 7 } },
+    });
+    expect(reviewed.candidates.melodyNotes.find((candidate) => candidate.id === note.id)).toMatchObject({
+      reviewStatus: 'edited',
+      normalized: { pitch: 'F#', tie: { id: 'review-tie', type: 'start' } },
+    });
+    expect(getUnresolvedImportDraftIssues(reviewed)).not.toContainEqual(warning);
+  });
+
+  it('can reorder an expanded measure and rebase the events it contains', () => {
+    const draft = parseMusicXmlToImportDraft(musicXmlImportFixture);
+    const moved = moveImportDraftLinearMeasure(draft, 0, 1);
+
+    expect(moved.score.linearMeasures.map((measure) => measure.sourceMeasureIndex)).toEqual([1, 0, 2, 1, 3]);
+    expect(moved.score.linearMeasures.map((measure) => measure.startTick)).toEqual([0, 1920, 2400, 4320, 6240]);
+    expect(moved.candidates.chords.find((candidate) => candidate.raw === 'C7')).toMatchObject({
+      normalized: { startTick: 1920 },
+      reviewStatus: 'edited',
+    });
+  });
+
+  it('blocks a reviewed draft with invalid editable timing without mutating its candidate order', () => {
+    const draft = parseMusicXmlToImportDraft(musicXmlImportFixture);
+    const invalid = {
+      ...draft,
+      candidates: {
+        ...draft.candidates,
+        chords: draft.candidates.chords.map((candidate, index) => index === 0 ? {
+          ...candidate,
+          normalized: { ...candidate.normalized, durationTicks: 0 },
+        } : candidate),
+      },
+    };
+    const orderBeforeConfirm = invalid.candidates.chords.map((candidate) => candidate.id);
+    const result = confirmImportDraftToSong(invalid);
+
+    expect(result).toMatchObject({ ok: false });
+    expect(result.validation.issues).toContainEqual(expect.objectContaining({ code: 'invalid-chord-timing', severity: 'error' }));
+    expect(invalid.candidates.chords.map((candidate) => candidate.id)).toEqual(orderBeforeConfirm);
   });
 
   it('expands a basic D.S. al Fine route while retaining Segno and Coda positions', () => {

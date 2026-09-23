@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import SongList from './pages/SongList';
 import Editor from './pages/Editor';
+import ImportReview from './pages/ImportReview';
 import Layout from './components/Layout';
 
 function App() {
@@ -11,6 +12,7 @@ function App() {
           <Route path="/" element={<SongList />} />
           <Route path="/editor" element={<Editor />} />
           <Route path="/editor/:id" element={<Editor />} />
+          <Route path="/import/review" element={<ImportReview />} />
         </Routes>
       </Layout>
     </Router>
