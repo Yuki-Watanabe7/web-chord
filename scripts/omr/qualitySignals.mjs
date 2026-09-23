@@ -14,20 +14,37 @@ const openingTags = (xml, name) => [...xml.matchAll(new RegExp(`<${name}(?=\\s|>
   .map((match) => attributes(match[1]));
 const tagText = (xml, name) => xml.match(new RegExp(`<${name}>([^<]*)<\\/${name}>`))?.[1]?.trim() ?? '';
 
-/** Returns one signal per low-grade measure in each score, in score order. */
-export const extractNoteQualityByScore = (bookXml, sheetXmlByNumber) => {
+const pageSlots = (page, pdfPage) => blocks(page.body, 'system').flatMap((system, systemIndex) =>
+  openingTags(system.body, 'stack').flatMap((stack, stackIndex) => stack.special === 'CAUTIONARY' ? [] : [{
+    pdfPage,
+    pageId: attributes(page.attributes).id,
+    systemIndex,
+    stackIndex,
+  }]));
+
+/** Returns the physical score layout and each exported score's source measure mapping. */
+export const extractOmrScoreMetadata = (bookXml, sheetXmlByNumber, pageCount) => {
   const scores = blocks(bookXml, 'score');
   if (scores.length === 0) throw new Error('Audiveris project has no scores');
-  return scores.map(({ body: scoreXml }) => {
+  const sheets = new Map(Array.from({ length: pageCount }, (_, index) => {
+    const number = index + 1;
+    return [number, sheetXmlByNumber(number)];
+  }));
+  const sourceLayout = [...sheets].flatMap(([number, xml]) =>
+    blocks(xml, 'page').flatMap((page) => pageSlots(page, number)));
+  if (sourceLayout.length === 0) throw new Error('Audiveris project has no source measures');
+  const scoreMetadata = scores.map(({ body: scoreXml }) => {
     const logicalPartId = attributes(blocks(scoreXml, 'logical-part')[0]?.attributes ?? '').id;
     if (!logicalPartId) throw new Error('Audiveris score has no logical part');
-    let measureIndex = 0;
+    const sourceMeasures = [];
     const signals = [];
     for (const pageRef of references(scoreXml, 'page')) {
-      const sheetXml = sheetXmlByNumber(Number(pageRef['sheet-number']));
+      const pdfPage = Number(pageRef['sheet-number']);
+      const sheetXml = sheets.get(pdfPage);
+      if (!sheetXml) throw new Error('Audiveris score references an unknown PDF page');
       const page = blocks(sheetXml, 'page').find((item) => attributes(item.attributes).id === pageRef['sheet-page-id']);
       if (!page) throw new Error('Audiveris score page is missing');
-      for (const system of blocks(page.body, 'system')) {
+      for (const [systemIndex, system] of blocks(page.body, 'system').entries()) {
         const stacks = openingTags(system.body, 'stack');
         const stackCount = stacks.length;
         const part = blocks(system.body, 'part').find((item) => attributes(item.attributes).id === logicalPartId);
@@ -37,20 +54,28 @@ export const extractNoteQualityByScore = (bookXml, sheetXmlByNumber) => {
           const value = attributes(match[1]);
           return [value.id, Number(value.grade)];
         }));
-        for (const [offset, measure] of measures.entries()) {
-          if (stacks[offset].special === 'CAUTIONARY') continue;
-          const ids = tagText(measure.body, 'head-chords').split(/\s+/).filter(Boolean);
+        for (const [offset, stack] of stacks.entries()) {
+          if (stack.special === 'CAUTIONARY') continue;
+          const measureIndex = sourceMeasures.length;
+          sourceMeasures.push({
+            measureIndex,
+            pdfPage,
+            pageId: attributes(page.attributes).id,
+            systemIndex,
+            stackIndex: offset,
+          });
+          const ids = tagText(measures[offset]?.body ?? '', 'head-chords').split(/\s+/).filter(Boolean);
           const values = ids.map((id) => grades.get(id)).filter((grade) => Number.isFinite(grade));
           const low = values.filter((grade) => grade < LOW_HEAD_CHORD_GRADE);
           if (low.length > 0) signals.push({
-            measureIndex: measureIndex + stacks.slice(0, offset).filter((stack) => stack.special !== 'CAUTIONARY').length,
+            measureIndex,
             minGrade: Math.min(...low),
             lowNoteCount: low.length,
           });
         }
-        measureIndex += stacks.filter((stack) => stack.special !== 'CAUTIONARY').length;
       }
     }
-    return { measureCount: measureIndex, signals };
+    return { measureCount: sourceMeasures.length, sourceMeasures, signals };
   });
+  return { sourceLayout, scores: scoreMetadata };
 };

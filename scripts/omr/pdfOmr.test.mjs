@@ -152,6 +152,8 @@ test('creates a source-free, reproducible OMR artifact on success', async () => 
     assert.deepEqual(job.preflight.renderedPages, [{ page: 1, width: 2550, height: 3300 }]);
     assert.equal(job.artifacts.musicXml.length, 1);
     assert.deepEqual(job.artifacts.musicXml[0].reviewSignals, [{ measureIndex: 0, minGrade: 0.63, lowNoteCount: 1 }]);
+    assert.deepEqual(job.artifacts.sourceLayout, [{ pdfPage: 1, pageId: '1', systemIndex: 0, stackIndex: 0 }]);
+    assert.deepEqual(job.artifacts.musicXml[0].sourceMeasures, [{ measureIndex: 0, ...job.artifacts.sourceLayout[0] }]);
     assert.equal((await readdir(job.jobDirectory, { recursive: true })).some((name) => name.endsWith('.omr')), false);
     assert.equal(job.artifacts.textLayerChordCandidates, 'text-layer/chord-candidates.json');
     const jobManifest = JSON.parse(await readFile(path.join(job.jobDirectory, 'job.json'), 'utf8'));

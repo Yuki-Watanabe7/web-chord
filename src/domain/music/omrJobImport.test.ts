@@ -72,5 +72,8 @@ describe('OMR job to ImportDraft', () => {
     const failedJob = (await jobJson()).replace('"succeeded"', '"failed"');
     expect(() => parseOmrJobArtifact(failedJob)).toThrow('成功した');
     expect(() => parseOmrJobArtifact('{}')).toThrow('成功した');
+    const malformedLayout = JSON.parse(await jobJson());
+    malformedLayout.artifacts.sourceLayout = [{ pdfPage: 0, pageId: '1', systemIndex: 0, stackIndex: 0 }];
+    expect(() => parseOmrJobArtifact(JSON.stringify(malformedLayout))).toThrow('形式が正しく');
   });
 });
