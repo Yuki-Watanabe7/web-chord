@@ -255,6 +255,25 @@ const readMusicXmlCandidate = async (filePath) => {
 const parseEngineVersion = (output) => output.match(/Audiveris(?:\s+version)?\s*[:=]\s*([^\r\n]+)/i)?.[1]?.trim()
   ?? output.match(/Audiveris\s+([0-9][^\s]*)/i)?.[1];
 
+const audiverisLogLocation = (line) => {
+  const location = {};
+  for (const key of ['sheet', 'page']) {
+    const value = line.match(new RegExp(`\\b${key}\\s*(?:[#:{]\\s*)?(\\d+)\\b`, 'i'))?.[1];
+    if (value) location[key] = Number(value);
+  }
+  return location;
+};
+
+/**
+ * Finds the export warning emitted when PartwiseBuilder cannot turn a
+ * MetronomeInter into MusicXML. Keep this intentionally narrow: other
+ * Audiveris warnings remain available only in the preserved engine log.
+ */
+export const parseAudiverisMetronomeExportWarnings = (log) => String(log)
+  .split(/\r?\n/)
+  .filter((line) => /\bError visiting\b.*\bMetronomeInter\b/i.test(line))
+  .map(audiverisLogLocation);
+
 /**
  * macOS jpackage launchers commonly do not write `-help` output to stdout.
  * When the configured executable belongs to an .app bundle, retain the
@@ -576,6 +595,18 @@ export const runPdfOmrJob = async (options) => {
         severity: 'warning',
         code: 'multiple-musicxml-candidates',
         message: '複数のMusicXML候補が出力されました。レビュー時に対象を選択してください。',
+      });
+    }
+    const metronomeWarningLocations = parseAudiverisMetronomeExportWarnings(commandLogs.join('\n'));
+    if (metronomeWarningLocations.length > 0) {
+      diagnostics.push({
+        severity: 'warning',
+        code: 'omr-metronome-export-warning',
+        message: `Audiverisがメトロノーム記号をMusicXMLへ出力できませんでした（${metronomeWarningLocations.length}件）。テンポ表記をレビューしてください。`,
+        details: {
+          count: metronomeWarningLocations.length,
+          locations: metronomeWarningLocations,
+        },
       });
     }
     artifacts = {
